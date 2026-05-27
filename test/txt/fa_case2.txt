@@ -1,0 +1,20 @@
+[0;37m[TB/FA] Starting FlashAttention simulation — case2  (N=196 d=64 Br=14)[0m
+[0;37m[TB/FA] Computing CPU reference...[0m
+[0;37m[TB/FA] Running hardware simulation...[0m
+
+[1;37m===== FlashAttention Simulation Result =====[0m
+[1;37m  Case              : case2  (N=196 d=64 Br=14)[0m
+[1;37m  Cycles            : 2717381[0m
+[1;37m  Time (s)          : 0.013587[0m
+[1;37m  Mem reads  (Bytes): 1455104  [1421.0 KB][0m
+[1;37m  Mem writes (Bytes): 50176  [49.0 KB][0m
+[1;37m  Expected reads    : 150528  (3×N×d×4 bytes)[0m
+[1;37m  Expected writes   : 50176  (1×N×d×4 bytes)[0m
+[1;37m  Max abs diff      : 9.98e-09  at idx=6335[0m
+[1;37m  Errors (>1e-04)    : 0  [PASS][0m
+[1;37m=============================================[0m
+[0;32m[TB/FA] *** TEST PASSED  (cycles=2717381) ***[0m
+
+[0;36m[TB/FA] DMA bandwidth: read 0.107 GB/s  write 0.004 GB/s[0m
+[0;36m[TB/FA] Estimated MACs: 4917248  (1.81 MAC/cycle)[0m
+

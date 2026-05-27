@@ -1,0 +1,32 @@
+# Verilator 編譯產物（可重新 make，不需上傳）
+src/hardware/flash_attn/obj_dir/
+
+# 編譯後的可執行檔
+test/testbench/vit/build/
+test/testbench/flash_attn/build/
+build/
+
+# 靜態函式庫
+*.a
+*.o
+
+# 預訓練權重（檔案太大，不上傳 git）
+weights/
+ViT/weight/
+
+# 批次測試圖片 binary（每張 230KB，整批太大）
+batch_*/
+*.bin
+
+# 系統產生的檔案
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+
+# FST waveform 檔
+*.fst
+
+# log 輸出
+build/logs/
+*.log

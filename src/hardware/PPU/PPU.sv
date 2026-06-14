@@ -1,162 +1,172 @@
 `include "ASIC.svh"
 
-module PPU (
-    input  logic                         clk,
-    input  logic                         rst,
-    
-    // 全域控制與模式配置
-    input  logic [1:0]                   ppu_mode,          // 00: Attn Out, 01: FFN FC1, 10: FFN FC2
-    input  logic [5:0]                   scaling_factor,    // Requant 移位值 n
-    input  logic                         data_in_valid,     // 輸入資料有效flag
-    input  logic                         token_start,       // 當前 Token 串流起點 (用於初始化累加器)
-    input  logic                         token_end,         // 當前 Token 串流終點 (用於觸發寫入 SRAM)
-    input  logic [7:0]                   current_token_idx, // Token 索引 (0~196)
+module PPU #(
+    parameter int TOKEN_NUM       = 197,
+    parameter int CHANNEL_NUM     = 384,
+    parameter int TOKEN_TILE      = 16,
+    parameter int CHANNEL_TILE    = 16,
+    parameter int DATA_W          = 8,
+    parameter int SUM_W           = 32,
+    parameter int TOKEN_W         = 8,
+    parameter int CHANNEL_TILE_W  = 5,
+    parameter logic [7:0] ZERO_POINT = 8'd128
+)(
+    input  logic clk,
+    input  logic rst,
 
-    // 數據輸入通路
-    input  logic signed [`DATA_BITS-1:0] data_in,           // 來自 Systolic Array 的成果 (INT32)
-    input  logic [7:0]                   residual_in,       // 來自 Global Buffer 的 Shortcut (INT8)
+    // 00: Attention output, 01: FFN FC1, 10: FFN FC2
+    input  logic [1:0] ppu_mode_i,
+    input  logic [5:0] scaling_factor_i,
 
-    // 數據輸出通路 (特徵圖)
-    output logic [7:0]                   data_out,          // 輸出至 L2 Global Buffer / 下級 Activation Buffer
-    output logic                         data_out_valid,    // 特徵圖輸出有效flag
-    
-    // Token Stat SRAM 寫入介面 (RMSNorm Fusion 第一階段)
-    output logic [7:0]                   token_stat_addr,
-    output logic [7:0]                   token_stat_data,
-    output logic                         token_stat_we
+    // -------------------------
+    // Tile input handshake from Systolic Array / SRAM
+    // -------------------------
+    input  logic tile_valid_i,
+    output logic tile_ready_o,
+
+    // 32-bit Psum input tile (16x16x32 = 8192 bits)
+    input  logic [TOKEN_TILE*CHANNEL_TILE*`DATA_BITS-1:0] psum_tile_i,
+
+    // 8-bit Residual tile (16x16x8 = 2048 bits)
+    input  logic [TOKEN_TILE*CHANNEL_TILE*DATA_W-1:0] residual_tile_i,
+
+    // Indices & masks
+    input  logic [TOKEN_W-1:0]        base_token_idx_i,
+    input  logic [CHANNEL_TILE_W-1:0] channel_tile_idx_i,
+    input  logic [TOKEN_TILE-1:0]     token_valid_mask_i,
+
+    // -------------------------
+    // Tile output handshake to Activation Buffer / GLB
+    // -------------------------
+    output logic data_tile_valid_o,
+    input  logic data_tile_ready_i,
+    output logic [TOKEN_TILE*CHANNEL_TILE*DATA_W-1:0] data_tile_o,
+
+    // -------------------------
+    // Statistic output handshake to Token Stat SRAM
+    // -------------------------
+    output logic stat_valid_o,
+    input  logic stat_ready_i,
+    output logic [TOKEN_W-1:0] stat_token_idx_o,
+    output logic [SUM_W-1:0]   sum_sq_o
 );
 
-    // 內部子模組互連訊號線
-    logic signed [`DATA_BITS-1:0] gelu_to_requant;
-    logic signed [`DATA_BITS-1:0] requant_in_mux;
-    logic [7:0]                   requant_to_residual;
-    logic [7:0]                   res_add_to_mux;
-    
-    logic                         rms_acc_en;
+    localparam int TILE_ELEMS = TOKEN_TILE * CHANNEL_TILE;
 
-    // ─────────────────────────────────────────────────────────────────
-    // [Unit 2] GELU Unit 實例化 (非線性激活)
-    // ─────────────────────────────────────────────────────────────────
-    GELU_Unit u_GELU_Unit (
-        .clk(clk),
-        .rst(rst),
-        .en(data_in_valid && (ppu_mode == 2'b01)), // 僅在 FFN FC1 階段啟用
-        .data_in(data_in),
-        .data_out(gelu_to_requant)
-    );
+    // ==========================================
+    // Stage 1 Pipeline Registers
+    // ==========================================
+    logic stg1_valid;
+    logic stg1_ready;
 
-    // Requant 輸入多路選擇器：FC1 走 GELU 查表線；其餘運算走原始 data_in 線
-    assign requant_in_mux = (ppu_mode == 2'b01) ? gelu_to_requant : data_in;
+    logic [1:0]                                stg1_ppu_mode;
+    logic [5:0]                                stg1_scaling_factor;
+    logic [TOKEN_TILE*CHANNEL_TILE*DATA_W-1:0] stg1_residual_tile;
+    logic [TOKEN_W-1:0]                        stg1_base_token_idx;
+    logic [CHANNEL_TILE_W-1:0]                 stg1_channel_tile_idx;
+    logic [TOKEN_TILE-1:0]                     stg1_token_valid_mask;
 
-    // ─────────────────────────────────────────────────────────────────
-    // [Unit 1] Requant Unit 實例化 (INT32 -> uint8 再量化)
-    // ─────────────────────────────────────────────────────────────────
-    Requant_Unit u_Requant_Unit (
-        .data_in(requant_in_mux),
-        .scaling_factor(scaling_factor),
-        .data_out(requant_to_residual)
-    );
+    // Bypass register for non-GELU paths
+    logic signed [`DATA_BITS-1:0] stg1_psum_bypass [0:TILE_ELEMS-1];
 
-    // ─────────────────────────────────────────────────────────────────
-    // [Unit 3] Residual Add Unit 組合邏輯實現 (Shortcut 相加)
-    // ─────────────────────────────────────────────────────────────────
-    // 承接自 Residual_Add_Unit.sv 的 uint8 (Zero-point=128) 飽和相加算法
-    // 公式：q_out = clamp(q_main + q_residual - 128, 0, 255)
-    logic signed [9:0] sum_q;
-    always_comb begin
-        sum_q = $signed({1'b0, requant_to_residual})
-              + $signed({1'b0, residual_in})
-              - $signed(10'sd128); // 減去一個 ZERO_POINT
-
-        if (sum_q < 10'sd0) begin
-            res_add_to_mux = 8'd0;    // 下溢飽和截斷
-        end else if (sum_q > 10'sd255) begin
-            res_add_to_mux = 8'd255;  // 上溢飽和截斷
-        end else begin
-            res_add_to_mux = sum_q[7:0];
-        end
-    end
-
-    // ─────────────────────────────────────────────────────────────────
-    // 頂層 Datapath MUX 輸出排程
-    // ─────────────────────────────────────────────────────────────────
-    always_comb begin
-        case (ppu_mode)
-            2'b00:   data_out = res_add_to_mux;      // 狀況一：Attn Out + X = X_mid
-            2'b01:   data_out = requant_to_residual; // 狀況二：FC1 + GELU -> Requant -> 直通下一級
-            2'b10:   data_out = res_add_to_mux;      // 狀況三：FC2 + X_mid = X_out
-            default: data_out = requant_to_residual;
-        endcase
-    end
-
-    always_ff @(posedge clk) begin
-        if (rst) data_out_valid <= 1'b0;
-        else     data_out_valid <= data_in_valid;
-    end
-
-    // ─────────────────────────────────────────────────────────────────
-    // [Unit 4] RMS Stat Accumulator 串流內部邏輯 (Σx² 累加與 inv_rms 查表)
-    // ─────────────────────────────────────────────────────────────────
-    assign rms_acc_en = (ppu_mode == 2'b00) || (ppu_mode == 2'b10);
-
-    logic signed [8:0]  centered_x;
-    logic [15:0]        square_x;
-    
-    // 1. 還原 uint8 偏移量至 signed 數值，並執行單週期平方計算
-    assign centered_x = $signed({1'b0, data_out}) - $signed(9'sd128);
-    assign square_x   = centered_x * centered_x;
-
-    // 2. 利用記憶體陣列保存 197 個 Token 分開動態累積的中途 Partial Sum (解決通道交織交錯進來的問題)
-    logic [31:0] partial_sum_mem [0:196];
-    logic [31:0] current_sum;
-
-    always_comb begin
-        if (data_out_valid && rms_acc_en) begin
-            if (token_start)
-                current_sum = {16'b0, square_x};
-            else
-                current_sum = partial_sum_mem[current_token_idx] + square_x;
-        end else begin
-            current_sum = partial_sum_mem[current_token_idx];
-        end
-    end
+    // Handshake logic
+    logic tail_ready_o;
+    assign stg1_ready   = !stg1_valid || tail_ready_o;
+    assign tile_ready_o = stg1_ready;
 
     always_ff @(posedge clk) begin
         if (rst) begin
-            integer i;
-            for (i = 0; i < 197; i = i + 1) begin
-                partial_sum_mem[i] <= 32'd0;
-            end
-        end else begin
-            if (data_out_valid && rms_acc_en) begin
-                partial_sum_mem[current_token_idx] <= current_sum;
-            end else if (token_end && rms_acc_en) begin
-                // 當前 Token 處理結束並寫入 SRAM 後，將快取清零以供下個 Block 使用
-                partial_sum_mem[current_token_idx] <= 32'd0;
+            stg1_valid <= 1'b0;
+        end else if (stg1_ready) begin
+            stg1_valid <= tile_valid_i;
+        end
+    end
+
+    integer i;
+    always_ff @(posedge clk) begin
+        if (stg1_ready && tile_valid_i) begin
+            stg1_ppu_mode         <= ppu_mode_i;
+            stg1_scaling_factor   <= scaling_factor_i;
+            stg1_residual_tile    <= residual_tile_i;
+            stg1_base_token_idx   <= base_token_idx_i;
+            stg1_channel_tile_idx <= channel_tile_idx_i;
+            stg1_token_valid_mask <= token_valid_mask_i;
+            
+            for (i = 0; i < TILE_ELEMS; i++) begin
+                stg1_psum_bypass[i] <= psum_tile_i[i*`DATA_BITS +: `DATA_BITS];
             end
         end
     end
 
-    // 3. 倒數方均根常數 ROM 查找表 (256 x 8-bit)
-    logic [7:0] inv_rms_rom [0:255];
-    initial begin
-        // 此處依據 Python 腳本導出的常數寫入實體硬體 ROM 近似值
-    end
+    // ==========================================
+    // Datapath: GELU Array & Requantization
+    // ==========================================
+    logic [TOKEN_TILE*CHANNEL_TILE*DATA_W-1:0] stg1_main_tile;
 
-    // 4. 當 token_end 脈衝到來時，單週期完成查表並對接寫入 Token Stat SRAM
-    always_ff @(posedge clk) begin
-        if (rst) begin
-            token_stat_we   <= 1'b0;
-            token_stat_addr <= 8'd0;
-            token_stat_data <= 8'd0;
-        end else if (token_end && rms_acc_en) begin
-            token_stat_we   <= 1'b1;
-            token_stat_addr <= current_token_idx;
-            // 採用 current_sum 的高位元區段作為動態映射 ROM 索引 (Index Mapping)
-            token_stat_data <= inv_rms_rom[current_sum[23:16]]; 
-        end else begin
-            token_stat_we   <= 1'b0;
+    genvar g;
+    generate
+        for (g = 0; g < TILE_ELEMS; g++) begin : gen_ppu_lanes
+            logic signed [`DATA_BITS-1:0] lane_psum_in;
+            logic signed [`DATA_BITS-1:0] lane_gelu_out;
+            logic signed [`DATA_BITS-1:0] lane_post_gelu;
+            logic [7:0]                   lane_requant_out;
+
+            assign lane_psum_in = psum_tile_i[g*`DATA_BITS +: `DATA_BITS];
+
+            // 1 Cycle latency matches stg1 registers
+            GELU_Unit u_gelu (
+                .clk     (clk),
+                .rst     (rst),
+                .en      (tile_valid_i && stg1_ready),
+                .data_in (lane_psum_in),
+                .data_out(lane_gelu_out)
+            );
+
+            // Mux: Use GELU out for FC1 mode, otherwise use bypass psum
+            assign lane_post_gelu = (stg1_ppu_mode == 2'b01) ? lane_gelu_out : stg1_psum_bypass[g];
+
+            // Pure Combinational mapping
+            Requant_Unit u_requant (
+                .data_in       (lane_post_gelu),
+                .scaling_factor(stg1_scaling_factor),
+                .data_out      (lane_requant_out)
+            );
+
+            assign stg1_main_tile[g*DATA_W +: DATA_W] = lane_requant_out;
         end
-    end
+    endgenerate
+
+    // ==========================================
+    // Tail Stage: Residual Add & RMS Acc
+    // ==========================================
+    PPU_Residual_RMS_Tail #(
+        .TOKEN_NUM       (TOKEN_NUM),
+        .CHANNEL_NUM     (CHANNEL_NUM),
+        .TOKEN_TILE      (TOKEN_TILE),
+        .CHANNEL_TILE    (CHANNEL_TILE),
+        .DATA_W          (DATA_W),
+        .SUM_W           (SUM_W),
+        .TOKEN_W         (TOKEN_W),
+        .CHANNEL_TILE_W  (CHANNEL_TILE_W),
+        .ZERO_POINT      (ZERO_POINT)
+    ) u_tail (
+        .clk                (clk),
+        .rst                (rst),
+        .ppu_mode_i         (stg1_ppu_mode),
+        .tile_valid_i       (stg1_valid),
+        .tile_ready_o       (tail_ready_o),
+        .main_tile_i        (stg1_main_tile),
+        .residual_tile_i    (stg1_residual_tile),
+        .base_token_idx_i   (stg1_base_token_idx),
+        .channel_tile_idx_i (stg1_channel_tile_idx),
+        .token_valid_mask_i (stg1_token_valid_mask),
+        .data_tile_valid_o  (data_tile_valid_o),
+        .data_tile_ready_i  (data_tile_ready_i),
+        .data_tile_o        (data_tile_o),
+        .stat_valid_o       (stat_valid_o),
+        .stat_ready_i       (stat_ready_i),
+        .stat_token_idx_o   (stat_token_idx_o),
+        .sum_sq_o           (sum_sq_o)
+    );
 
 endmodule

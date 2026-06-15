@@ -1,365 +1,427 @@
 # Streaming RMSNorm Unit README
 
-## 1. Overview
+## 1. 功能說明
 
-`Streaming_RMSNorm_Unit` 是 ViT Accelerator 中用來執行 RMSNorm 的硬體模組。
+`Streaming_RMSNorm_Unit` 負責把 RMSNorm input activation 做正規化，輸出下一級 Systolic Array 可使用的 INT8 activation stream。
 
-此 module 的目標是將輸入 activation stream 逐筆正規化，並輸出 INT8 normalized activation stream 給下一級 PE Array 前的 Activation FIFO。
+計算式：
 
-本設計對應 ViT-Small/16 的 activation shape：
+```text
+y[t,c] = x[t,c] × inv_rms[t] × gamma[c]
+```
+
+目前資料規格：
 
 ```text
 TOKEN_NUM   = 197
 CHANNEL_NUM = 384
+
+x_in        = signed INT8
+inv_rms     = 16-bit fixed-point
+gamma       = 16-bit fixed-point
+y_out       = signed INT8
 ```
 
-也就是輸入資料順序為：
+`Streaming_RMSNorm_Unit` 每次輸出：
 
 ```text
-token 0, channel 0 ~ 383
-token 1, channel 0 ~ 383
-...
-token 196, channel 0 ~ 383
+1 個 INT8 y_out
 ```
 
-RMSNorm 計算公式為：
+但 Systolic Array 的 activation input 是：
 
 ```text
-y[t,c] = clamp_int8((x[t,c] * inv_rms[t] * gamma[c]) >>> SHIFT)
+act_bram_row[127:0] = 16 個 INT8
 ```
 
-其中：
-
-```text
-SHIFT = 2 * FRAC + OUT_SHIFT
-```
-
----
-
-## 2. Module Hierarchy
-
-本檔案包含兩個主要 module：
+所以中間需要：
 
 ```text
 Streaming_RMSNorm_Unit
-└── Streaming_RMSNorm_Core
-```
-
-### 2.1 Streaming_RMSNorm_Core
-
-`Streaming_RMSNorm_Core` 負責單一 activation element 的 RMSNorm 運算。
-
-輸入：
-
-```text
-x_in        : signed INT8 activation
-inv_rms_in  : unsigned 16-bit fixed-point
-gamma_in    : signed 16-bit fixed-point
-```
-
-輸出：
-
-```text
-y_out       : signed INT8 normalized activation
-```
-
-Core 內部是 3-stage pipeline：
-
-```text
-Stage 1: x_in * inv_rms_in
-Stage 2: result * gamma_in
-Stage 3: arithmetic shift + clamp to INT8
+→ Streaming_RMSNorm_RowPacker
+→ Activation BRAM
+→ Systolic.v
 ```
 
 ---
 
-### 2.2 Streaming_RMSNorm_Unit
-
-`Streaming_RMSNorm_Unit` 是外層控制 module，負責：
+## 2. 整體連接關係
 
 ```text
-1. start / busy / done 控制
-2. token counter
-3. channel counter
-4. Token Stat SRAM read address generation
-5. Gamma Buffer read address generation
-6. input valid/ready handshake
-7. output valid/ready handshake
-8. y_last generation
+Activation-Residual Buffer / GLB
+        ↓
+        x_in[7:0], x_valid, x_ready
+
+Streaming_RMSNorm_Unit
+        ↓
+        y_out[7:0], y_valid, y_ready, y_last
+
+Streaming_RMSNorm_RowPacker
+        ↓
+        act_wr_row[127:0], act_wr_addr, act_wr_valid
+
+Activation BRAM
+        ↓
+        act_bram_row[127:0]
+
+Systolic.v
 ```
 
-address 對應方式：
+另外 `Streaming_RMSNorm_Unit` 會讀兩個 buffer：
 
 ```text
-inv_rms_addr = token_cnt
-gamma_addr   = channel_cnt
+Token Stat SRAM  → 提供 inv_rms[t]
+Gamma Buffer     → 提供 gamma[c]
 ```
 
 ---
 
-## 3. Fixed-Point Format
+## 3. Streaming_RMSNorm_Unit IO Port
 
-目前暫定格式如下：
+### Control
 
-```text
-x_in       : signed INT8
-inv_rms    : unsigned 16-bit fixed-point
-gamma      : signed 16-bit fixed-point
-FRAC       : 14
-OUT_SHIFT  : 0
-```
-
-因此目前預設：
-
-```text
-FRAC = 14
-SHIFT = 2 * FRAC + OUT_SHIFT = 28
-```
-
-計算方式：
-
-```text
-prod1 = x_in * inv_rms
-prod2 = prod1 * gamma
-scaled = prod2 >>> SHIFT
-y_out = clamp_int8(scaled)
-```
-
-注意：`FRAC=14` 目前只是暫定值，最後需要根據 software calibration 決定。若 software 最後選擇不同 Q format，只需要調整：
-
-```systemverilog
-`define RMS_FRAC
-`define RMS_OUT_SHIFT
-```
+| Signal  | 方向     | 說明                                    |
+| ------- | ------ | ------------------------------------- |
+| `clk`   | input  | clock                                 |
+| `rst_n` | input  | active-low reset                      |
+| `start` | input  | controller 拉高 1 cycle，開始處理一整個 RMSNorm |
+| `busy`  | output | RMSNorm 正在運作                          |
+| `done`  | output | 最後一筆 output 被接收後 pulse 1 cycle        |
 
 ---
 
-## 4. Default Parameters
+### Input Activation Stream
 
-目前預設參數如下：
-
-```systemverilog
-`define RMS_TOKEN_NUM       197
-`define RMS_CHANNEL_NUM     384
-`define RMS_X_W             8
-`define RMS_SCALE_W         16
-`define RMS_FRAC            14
-`define RMS_OUT_SHIFT       0
-```
-
-| Parameter     | Description                            |
-| ------------- | -------------------------------------- |
-| `TOKEN_NUM`   | token 數量，ViT-Small/16 為 197            |
-| `CHANNEL_NUM` | embedding dimension，ViT-Small/16 為 384 |
-| `X_W`         | activation bitwidth，目前為 INT8           |
-| `SCALE_W`     | inv_rms / gamma bitwidth，目前為 16-bit    |
-| `FRAC`        | fixed-point 小數位數，目前暫定 14               |
-| `OUT_SHIFT`   | 額外 output scaling shift，目前暫定 0         |
-
----
-
-## 5. Input / Output Interface
-
-### 5.1 Control Signals
-
-| Signal  | Direction | Description                     |
-| ------- | --------- | ------------------------------- |
-| `clk`   | input     | clock                           |
-| `rst_n` | input     | active-low reset                |
-| `start` | input     | 開始處理一整個 RMSNorm stream          |
-| `busy`  | output    | module 正在運作                     |
-| `done`  | output    | 最後一筆 output 被接收後 pulse 一個 cycle |
-
----
-
-### 5.2 Input Activation Stream
-
-| Signal    | Direction | Description            |
-| --------- | --------- | ---------------------- |
-| `x_valid` | input     | 上游資料有效                 |
-| `x_ready` | output    | module 可以接收資料          |
-| `x_in`    | input     | signed INT8 activation |
-
-input activation 來源通常是：
-
-```text
-Activation-Residual Buffer / Global Buffer
-```
+| Signal    | 方向     | 寬度 | 連接對象                    | 說明                     |
+| --------- | ------ | -: | ----------------------- | ---------------------- |
+| `x_valid` | input  |  1 | GLB / Activation Buffer | input activation 有效    |
+| `x_ready` | output |  1 | GLB / Activation Buffer | RMSNorm 可以接收資料         |
+| `x_in`    | input  |  8 | GLB / Activation Buffer | signed INT8 activation |
 
 資料順序必須是 token-major：
 
 ```text
-token 0 channel 0
-token 0 channel 1
+token0 ch0
+token0 ch1
 ...
-token 0 channel 383
-token 1 channel 0
+token0 ch383
+token1 ch0
 ...
-token 196 channel 383
+token196 ch383
 ```
 
----
-
-### 5.3 Token Stat SRAM Interface
-
-| Signal         | Direction | Description             |
-| -------------- | --------- | ----------------------- |
-| `inv_rms_addr` | output    | Token Stat SRAM address |
-| `inv_rms_data` | input     | inv_rms[t]              |
-
-`inv_rms_addr` 由 `token_cnt` 產生：
-
-```text
-inv_rms_addr = token_cnt
-```
-
-代表同一個 token 的 384 個 channels 都共用同一個 `inv_rms[t]`。
-
----
-
-### 5.4 Gamma Buffer Interface
-
-| Signal       | Direction | Description          |
-| ------------ | --------- | -------------------- |
-| `gamma_addr` | output    | Gamma Buffer address |
-| `gamma_data` | input     | gamma[c]             |
-
-`gamma_addr` 由 `channel_cnt` 產生：
-
-```text
-gamma_addr = channel_cnt
-```
-
-代表不同 channel 使用不同的 learnable scale parameter `gamma[c]`。
-
----
-
-### 5.5 Output Stream
-
-| Signal    | Direction | Description                       |
-| --------- | --------- | --------------------------------- |
-| `y_valid` | output    | output data valid                 |
-| `y_ready` | input     | 下游可以接收資料                          |
-| `y_last`  | output    | 最後一筆 output                       |
-| `y_out`   | output    | signed INT8 normalized activation |
-
-output 目的地通常是：
-
-```text
-Activation FIFO / PE input buffer
-```
-
-本 module 不需要把 normalized activation 完整寫回大的 GLB，因為 Streaming RMSNorm 的目的就是讓 RMSNorm output 直接 stream 到下一級 GEMM，以減少中間資料搬移。
-
----
-
-## 6. Dataflow
-
-整體資料流如下：
-
-```text
-Activation-Residual Buffer / GLB
-        |
-        | x[t,c]
-        v
-Streaming_RMSNorm_Unit
-        |
-        | read inv_rms[t] from Token Stat SRAM
-        | read gamma[c] from Gamma Buffer
-        v
-Streaming_RMSNorm_Core
-        |
-        | x[t,c] * inv_rms[t] * gamma[c]
-        | shift + clamp
-        v
-INT8 normalized activation stream
-        |
-        v
-Activation FIFO / PE Array input
-```
-
----
-
-## 7. Handshake Behavior
-
-本 module 使用 valid/ready protocol。
-
-### Input side
-
-一筆 input 真的被接收的條件是：
+每當：
 
 ```text
 x_valid && x_ready
 ```
 
-只有在這個條件成立時，`token_cnt` 和 `channel_cnt` 才會前進。
+代表 RMSNorm 接收一筆 `x_in`。
 
-### Output side
+---
 
-一筆 output 真的被下游接收的條件是：
+### Token Stat SRAM Interface
+
+| Signal         | 方向     |         寬度 | 連接對象            | 說明                   |
+| -------------- | ------ | ---------: | --------------- | -------------------- |
+| `inv_rms_addr` | output | `TOKEN_AW` | Token Stat SRAM | 讀取 inv_rms 的 address |
+| `inv_rms_data` | input  |         16 | Token Stat SRAM | `inv_rms[t]`         |
+
+address 對應：
+
+```text
+inv_rms_addr = token_cnt
+```
+
+也就是同一個 token 的 384 個 channel 共用同一個 `inv_rms[t]`。
+
+---
+
+### Gamma Buffer Interface
+
+| Signal       | 方向     |           寬度 | 連接對象         | 說明                 |
+| ------------ | ------ | -----------: | ------------ | ------------------ |
+| `gamma_addr` | output | `CHANNEL_AW` | Gamma Buffer | 讀取 gamma 的 address |
+| `gamma_data` | input  |           16 | Gamma Buffer | `gamma[c]`         |
+
+address 對應：
+
+```text
+gamma_addr = channel_cnt
+```
+
+也就是每個 channel 讀自己的 `gamma[c]`。
+
+---
+
+### Output Stream
+
+| Signal    | 方向     | 寬度 | 連接對象      | 說明                                |
+| --------- | ------ | -: | --------- | --------------------------------- |
+| `y_valid` | output |  1 | RowPacker | output 有效                         |
+| `y_ready` | input  |  1 | RowPacker | RowPacker 可以接收資料                  |
+| `y_last`  | output |  1 | RowPacker | 最後一筆 RMSNorm output               |
+| `y_out`   | output |  8 | RowPacker | signed INT8 normalized activation |
+
+每當：
 
 ```text
 y_valid && y_ready
 ```
 
-如果 `y_ready = 0`，pipeline 會 stall，避免 output data 被覆蓋或遺失。
+代表一筆 `y_out` 被 RowPacker 接收。
 
-### Last output
+---
 
-最後一筆 output 對應：
+## 4. RowPacker IO Port
+
+RowPacker 的功能是把 RMSNorm 的 8-bit stream pack 成 Systolic 需要的 128-bit row。
 
 ```text
-token_cnt   = TOKEN_NUM - 1
-channel_cnt = CHANNEL_NUM - 1
+16 筆 y_out[7:0]
+→ 1 筆 act_wr_row[127:0]
 ```
 
-當最後一筆 output 被接收時：
+### Input from Streaming_RMSNorm_Unit
 
-```text
-y_valid && y_ready && y_last
-```
+| Signal      | 方向     | 寬度 | 連接來源      |
+| ----------- | ------ | -: | --------- |
+| `s_data_i`  | input  |  8 | `y_out`   |
+| `s_valid_i` | input  |  1 | `y_valid` |
+| `s_ready_o` | output |  1 | `y_ready` |
+| `s_last_i`  | input  |  1 | `y_last`  |
 
-module 會：
+連接方式：
 
-```text
-busy <= 0
-done <= 1 for one cycle
+```systemverilog
+assign packer_s_data_i  = rms_y_out;
+assign packer_s_valid_i = rms_y_valid;
+assign rms_y_ready      = packer_s_ready_o;
+assign packer_s_last_i  = rms_y_last;
 ```
 
 ---
 
-## 8. Pipeline Latency
+### Output to Activation BRAM
 
-`Streaming_RMSNorm_Core` 是 3-stage pipeline：
+| Signal           | 方向     |       寬度 | 連接對象                  | 說明                        |
+| ---------------- | ------ | -------: | --------------------- | ------------------------- |
+| `act_wr_valid_o` | output |        1 | Activation BRAM       | write data valid          |
+| `act_wr_ready_i` | input  |        1 | Activation BRAM       | BRAM 可以接收 write           |
+| `act_wr_addr_o`  | output | `ADDR_W` | Activation BRAM       | write address             |
+| `act_wr_row_o`   | output |      128 | Activation BRAM       | packed 16 INT8 activation |
+| `act_wr_last_o`  | output |        1 | Controller / optional | 最後一個 packed row           |
+
+packed row 格式：
 
 ```text
-Stage 1: x * inv_rms
-Stage 2: result * gamma
-Stage 3: shift + clamp
+act_wr_row[7:0]       = 第 0 個 activation
+act_wr_row[15:8]      = 第 1 個 activation
+...
+act_wr_row[127:120]   = 第 15 個 activation
 ```
 
-因此在沒有 stall 的情況下，第一筆 input 進入後，需要約 3 個 pipeline stages 後才會看到第一筆 output。
+這個格式要對上 `Act_fifo.v`：
 
-steady-state 情況下，若 `x_valid = 1` 且 `y_ready = 1`，module 可以做到：
-
-```text
-1 input element / cycle
-1 output element / cycle
+```verilog
+act_r[15][i] <= act_row_in[8*i +: 8];
 ```
 
 ---
 
-## 12. Future Work
+## 5. Activation BRAM 和 Systolic.v 連接
 
-後續需要確認或補強的項目：
+RowPacker 寫入 Activation BRAM，Systolic 再從 Activation BRAM 讀出。
+
+### Activation BRAM Write Side
+
+來源：RowPacker
 
 ```text
-1. 由 software calibration 決定最終 FRAC / Q format
-2. 由 quantization flow 決定 OUT_SHIFT
-3. 補上 synchronous BRAM read latency alignment wrapper
-4. 使用真實 ViT activation / gamma / inv_rms 測完整 197 × 384 case
-5. 和下一級 Activation FIFO / PE Array 做 integration test
-6. 和 RMS Stat Accumulator + Inv-Sqrt LUT + Token Stat SRAM 做 fused path test
+act_wr_valid_o
+act_wr_ready_i
+act_wr_addr_o
+act_wr_row_o[127:0]
 ```
+
+---
+
+### Activation BRAM Read Side
+
+來源：Systolic.v
+
+| Signal           | 方向              |  寬度 | 說明                              |
+| ---------------- | --------------- | --: | ------------------------------- |
+| `act_bram_addr`  | Systolic output |  17 | Systolic 要讀的 activation address |
+| `act_bram_valid` | Systolic input  |   1 | BRAM read data valid            |
+| `act_bram_row`   | Systolic input  | 128 | 16 個 INT8 activation            |
+
+連接方式：
+
+```text
+Systolic.act_bram_addr → Activation BRAM read address
+Activation BRAM rdata  → Systolic.act_bram_row[127:0]
+Activation BRAM valid  → Systolic.act_bram_valid
+```
+
+---
+
+## 6. Activation BRAM Address Layout
+
+因為 `Systolic.v` 在一個 tile 裡會連續讀 16 row：
+
+```text
+act_base_addr + 0
+act_base_addr + 1
+...
+act_base_addr + 15
+```
+
+所以 RowPacker 寫入時要讓同一個 `(m_tile, k_tile)` 的 16 個 token row 放在連續 address。
+
+定義：
+
+```text
+m_tile  = token_idx / 16
+m_inner = token_idx % 16
+k_tile  = channel_idx / 16
+```
+
+對 ViT-Small/16：
+
+```text
+CHANNEL_NUM = 384
+CHANNEL_TILE = 16
+K_TILE_NUM = 384 / 16 = 24
+```
+
+write address：
+
+```text
+addr = base_addr
+     + m_tile × 384
+     + k_tile × 16
+     + m_inner
+```
+
+這樣 Systolic 讀取時會得到：
+
+```text
+act_base_addr + 0  → token m+0, channel k~k+15
+act_base_addr + 1  → token m+1, channel k~k+15
+...
+act_base_addr + 15 → token m+15, channel k~k+15
+```
+
+---
+
+## 7. Controller 需要提供的訊號
+
+### 給 Streaming_RMSNorm_Unit
+
+```text
+rms_start
+x_valid
+x_in
+inv_rms_data
+gamma_data
+y_ready
+```
+
+並接收：
+
+```text
+rms_busy
+rms_done
+x_ready
+inv_rms_addr
+gamma_addr
+y_valid
+y_out
+y_last
+```
+
+---
+
+### 給 RowPacker
+
+```text
+packer_start
+act_write_base_addr
+act_wr_ready
+```
+
+並接收：
+
+```text
+act_wr_valid
+act_wr_addr
+act_wr_row[127:0]
+act_wr_last
+```
+
+---
+
+### 給 Systolic.v
+
+Controller 要等 RowPacker 把需要的 activation tile 寫好後，再啟動 Systolic。
+
+需要設定：
+
+```text
+systolic_en
+act_base_addr
+w_base_addr
+k_tile_cnt
+```
+
+Systolic 回傳：
+
+```text
+module_ready
+opsum_valid
+opsum[31:0]
+```
+
+---
+
+## 8. Signed / Unsigned 注意事項
+
+目前 `Streaming_RMSNorm_Unit` 輸出是：
+
+```text
+signed INT8
+```
+
+但目前 Systolic path 看起來把 activation 當 unsigned 8-bit 使用。
+
+所以 RowPacker 需要依照系統決定是否轉格式。
+
+### 如果 Systolic 使用 uint8 zero-point 128
+
+RowPacker 要做：
+
+```text
+signed INT8 → uint8 zero-point 128
+```
+
+轉換：
+
+```text
+-128 → 0
+-1   → 127
+0    → 128
+127  → 255
+```
+
+硬體可用：
+
+```systemverilog
+u8 = {~s8[7], s8[6:0]};
+```
+
+### 如果 Systolic 使用 signed INT8
+
+RowPacker 直接 pack `y_out[7:0]`，但 Systolic / PE 端要使用 sign extension。
 
 

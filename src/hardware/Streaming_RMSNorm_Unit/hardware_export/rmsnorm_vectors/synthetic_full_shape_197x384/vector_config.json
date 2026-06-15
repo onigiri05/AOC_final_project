@@ -1,0 +1,20 @@
+{
+  "source": "synthetic_random_full_shape",
+  "q_format": "x=signed_int8, inv_rms=UINT16_UQ2.14, gamma=INT16_SQ2.14, y=signed_int8",
+  "frac": 14,
+  "out_shift": 0,
+  "shift": 28,
+  "seed": 0,
+  "token_num": 197,
+  "channel_num": 384,
+  "x_input_lines": 75648,
+  "inv_rms_lines": 197,
+  "gamma_lines": 384,
+  "golden_lines": 75648,
+  "files": {
+    "x_input": "ckpt_flash_attn/hardware_export/rmsnorm_vectors/synthetic_full_shape_197x384/x_input.mem",
+    "inv_rms": "ckpt_flash_attn/hardware_export/rmsnorm_vectors/synthetic_full_shape_197x384/inv_rms.mem",
+    "gamma": "ckpt_flash_attn/hardware_export/rmsnorm_vectors/synthetic_full_shape_197x384/gamma.mem",
+    "golden": "ckpt_flash_attn/hardware_export/rmsnorm_vectors/synthetic_full_shape_197x384/golden.mem"
+  }
+}

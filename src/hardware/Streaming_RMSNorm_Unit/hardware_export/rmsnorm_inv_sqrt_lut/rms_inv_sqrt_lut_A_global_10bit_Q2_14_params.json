@@ -1,0 +1,31 @@
+{
+  "scheme": "A_global",
+  "description": "Global shared RMSNorm Inv-Sqrt LUT: mean_sq -> inv_rms",
+  "input_name": "mean_sq",
+  "output_name": "inv_rms",
+  "lut_bits": 10,
+  "n_entries": 1024,
+  "output_bits": 16,
+  "output_format": "UINT16_UQ2.14",
+  "q_frac": 14,
+  "mean_sq_min": 0.0,
+  "mean_sq_max": 281.79185943603517,
+  "index_formula": "idx = clamp(round(mean_sq * 3.6303390809), 0, 1023)",
+  "index_scale": 3.6303390809350686,
+  "files": {
+    "mem": "ckpt_flash_attn/hardware_export/rmsnorm_inv_sqrt_lut/rms_inv_sqrt_lut_A_global_10bit_Q2_14.mem",
+    "hex": "ckpt_flash_attn/hardware_export/rmsnorm_inv_sqrt_lut/rms_inv_sqrt_lut_A_global_10bit_Q2_14.hex",
+    "coe": "ckpt_flash_attn/hardware_export/rmsnorm_inv_sqrt_lut/rms_inv_sqrt_lut_A_global_10bit_Q2_14.coe",
+    "npy": "ckpt_flash_attn/hardware_export/rmsnorm_inv_sqrt_lut/rms_inv_sqrt_lut_A_global_10bit_Q2_14.npy"
+  },
+  "size": {
+    "n_luts": 1,
+    "n_entries": 1024,
+    "bits_per_entry": 16,
+    "total_bits": 16384,
+    "total_bytes": 2048,
+    "total_kb": 2.0,
+    "ramb18_usable_est": 1,
+    "ramb36_usable_est": 1
+  }
+}

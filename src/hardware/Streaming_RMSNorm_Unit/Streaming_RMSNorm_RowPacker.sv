@@ -115,7 +115,7 @@ module Streaming_RMSNorm_RowPacker #(
                      + k_tile * TOKEN_TILE
                      + m_inner;
 
-            calc_act_addr = logic'(addr_int[ADDR_W-1:0]);
+            calc_act_addr = addr_int[ADDR_W-1:0];
         end
     endfunction
 

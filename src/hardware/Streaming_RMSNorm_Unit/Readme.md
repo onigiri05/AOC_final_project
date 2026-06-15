@@ -16,10 +16,19 @@ y[t,c] = x[t,c] × inv_rms[t] × gamma[c]
 TOKEN_NUM   = 197
 CHANNEL_NUM = 384
 
-x_in        = signed INT8
+x_in        = unsigned INT8 zero-point 128
 inv_rms     = 16-bit fixed-point
 gamma       = 16-bit fixed-point
-y_out       = signed INT8
+y_out       = unsigned INT8 zero-point 128
+```
+
+`Streaming_RMSNorm_Unit` 外部 input / output 使用 unsigned INT8 zero-point 128，內部計算時會轉成 signed INT8 centered value。
+
+```text
+external x_in uint8 zero-point 128
+→ internal signed INT8
+→ RMSNorm calculation
+→ external y_out uint8 zero-point 128
 ```
 
 `Streaming_RMSNorm_Unit` 每次輸出：
@@ -92,11 +101,11 @@ Gamma Buffer     → 提供 gamma[c]
 
 ### Input Activation Stream
 
-| Signal    | 方向     | 寬度 | 連接對象                    | 說明                     |
-| --------- | ------ | -: | ----------------------- | ---------------------- |
-| `x_valid` | input  |  1 | GLB / Activation Buffer | input activation 有效    |
-| `x_ready` | output |  1 | GLB / Activation Buffer | RMSNorm 可以接收資料         |
-| `x_in`    | input  |  8 | GLB / Activation Buffer | signed INT8 activation |
+| Signal    | 方向     | 寬度 | 連接對象                    | 說明                                       |
+| --------- | ------ | -: | ----------------------- | ---------------------------------------- |
+| `x_valid` | input  |  1 | GLB / Activation Buffer | input activation 有效                      |
+| `x_ready` | output |  1 | GLB / Activation Buffer | RMSNorm 可以接收資料                           |
+| `x_in`    | input  |  8 | GLB / Activation Buffer | unsigned INT8 activation, zero-point 128 |
 
 資料順序必須是 token-major：
 
@@ -156,12 +165,12 @@ gamma_addr = channel_cnt
 
 ### Output Stream
 
-| Signal    | 方向     | 寬度 | 連接對象      | 說明                                |
-| --------- | ------ | -: | --------- | --------------------------------- |
-| `y_valid` | output |  1 | RowPacker | output 有效                         |
-| `y_ready` | input  |  1 | RowPacker | RowPacker 可以接收資料                  |
-| `y_last`  | output |  1 | RowPacker | 最後一筆 RMSNorm output               |
-| `y_out`   | output |  8 | RowPacker | signed INT8 normalized activation |
+| Signal    | 方向     | 寬度 | 連接對象      | 說明                                                  |
+| --------- | ------ | -: | --------- | --------------------------------------------------- |
+| `y_valid` | output |  1 | RowPacker | output 有效                                           |
+| `y_ready` | input  |  1 | RowPacker | RowPacker 可以接收資料                                    |
+| `y_last`  | output |  1 | RowPacker | 最後一筆 RMSNorm output                                 |
+| `y_out`   | output |  8 | RowPacker | unsigned INT8 normalized activation, zero-point 128 |
 
 每當：
 
@@ -382,46 +391,3 @@ module_ready
 opsum_valid
 opsum[31:0]
 ```
-
----
-
-## 8. Signed / Unsigned 注意事項
-
-目前 `Streaming_RMSNorm_Unit` 輸出是：
-
-```text
-signed INT8
-```
-
-但目前 Systolic path 看起來把 activation 當 unsigned 8-bit 使用。
-
-所以 RowPacker 需要依照系統決定是否轉格式。
-
-### 如果 Systolic 使用 uint8 zero-point 128
-
-RowPacker 要做：
-
-```text
-signed INT8 → uint8 zero-point 128
-```
-
-轉換：
-
-```text
--128 → 0
--1   → 127
-0    → 128
-127  → 255
-```
-
-硬體可用：
-
-```systemverilog
-u8 = {~s8[7], s8[6:0]};
-```
-
-### 如果 Systolic 使用 signed INT8
-
-RowPacker 直接 pack `y_out[7:0]`，但 Systolic / PE 端要使用 sign extension。
-
-

@@ -26,8 +26,8 @@ reg signed [47:0] P_dsp;
 
 //latch ipsum for accumulate
 reg [19:0] ipsum0_r, ipsum1_r;
-wire [19:0] psum0 = {{3{P_dsp[16]}}, P_dsp[16:0]};
-wire [19:0] psum1 = {{3{P_dsp[33]}}, P_dsp[33:17]};
+wire [19:0] psum0 = {{4{P_dsp[15]}}, P_dsp[15:0]};
+wire [19:0] psum1 = P_dsp[35:16];
 assign opsum0 = ipsum0_r + psum0;
 assign opsum1 = ipsum1_r + psum1;
 
@@ -39,7 +39,7 @@ always @(posedge clk) begin
     if(rst) begin
         ipsum0_r <= 20'd0;
         ipsum1_r <= 20'd0;
-        A_dsp <= 30'd0; //sign [24:17], {5{W1[7]}}, W1, 17'b0
+        A_dsp <= 30'd0; //sign [24:17], {6{W1[7]}}, W1, 16'b0
         D_dsp <= 25'd0; //sign [7:0]
         B_dsp <= 18'd0; //unsign, max: +255
         W_pack_dsp <= 25'd0;
@@ -54,7 +54,7 @@ always @(posedge clk) begin
 
         //DSP
         if(push_weight_row) begin //16 cycle
-            A_dsp <= W1; //sign [24:17], {5{W1[7]}}, W1, 17'b0
+            A_dsp <= W1; //sign [24:17], {6{W1[7]}}, W1, 16'b0
             D_dsp <= {{17{W0[7]}}, W0}; //sign [7:0]
         end
 
@@ -63,7 +63,7 @@ always @(posedge clk) begin
         end
         W_pack_dsp <= A_dsp[24:0] + D_dsp;
         mul_dsp <= W_pack_dsp * B_dsp; //sign mul
-        P_dsp <= mul_dsp + {25'b0, mul_dsp[16], 17'b0}; //correct the upper psum, when lower psum <0
+        P_dsp <= mul_dsp + {26'b0, mul_dsp[15], 16'b0}; //correct the upper psum, when lower psum <0
     end
     
 end

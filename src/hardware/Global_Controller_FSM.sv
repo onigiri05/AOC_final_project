@@ -149,7 +149,7 @@ module Global_Controller_FSM (
                 
                 ST_QKV_PROJ: begin
                     sys_en               <= 1'b1;
-                    ppu_mode_o           <= 2'b01;  // 根據你的規劃設定 (若QKV不進GELU/Residual需確認模式)
+                    ppu_mode_o           <= 2'b01;  // 根據規劃設定 (若QKV不進GELU/Residual需確認模式)
                     ppu_scaling_factor_o <= 6'd2;   // 填入 QKV 對應的右移位數
                     sys_k_tile_cnt       <= 7'd24;  // 384/16 = 24 個 K-tile
                     sys_w_base_addr      <= 17'h0000; // QKV Weight 位址

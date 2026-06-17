@@ -9,6 +9,22 @@ Systolic
 ```
 ## Systolic.v
 - Top level module, 所有對外接口都由Systolic.v包裝
+- 行為描述
+    1. 單次大循環(`enable` 1次)可執行`act[16, k]` by `weight[k, 16]`
+    2. 其中k為任意16的倍數
+    3. 對應到的`[16,16]`by `[16, 16]`GEMM次數為 k/16 次
+    4. ex: `act[16, 48]` by `weight[48, 16]`
+        總共會執行3次 `[16,16]` by `[16, 16]` GEMM
+        >![image](../../../image/GEMM.png)
+
+        1. 第1次算 `act[1~16, 1~16]` by `weight[1~16, 1~16]`
+        2. 第2次算 `act[1~16, 17~32]` by `weight[17~32, 1~16]`
+        3. 第2次算 `act[1~16, 33~48]` by `weight[33~48, 1~16]`
+        4. 三次累加之後就得到[16 by 16] opsum, 並輸出到PPU
+    5. ex2: 以Vit的QKV Projection 為例 `act[197, 384]` by `weight[384, 1152]`
+        1. 需要`enable` ceil(197/16) * ceil(1152/16)次
+        2. 每次`enable` 都執行`act [16, 384]` by `weight [384, 16]`
+            - 384/16 = 24次`[16,16]` by `[16, 16]` GEMM, 產出 `opsum[16, 16]`, 送至PPU
 - I/O spec
     1. Control signal & config
         ``` verilog
@@ -20,19 +36,19 @@ Systolic
         input [6:0] k_tile_cnt //at most 96, at FC2
         ```
         - en
-            - 需要執行GEMM時要給en = 1'b1
+            - 需要執行GEMM時要給`en` = 1'b1, 在收到Systolic.v回傳的`module_ready`後`en`可變回0
         - module_ready
-            - Systolic array已經可以執行下個m-tile時, ready = 1'b1
-            - en與ready同時為high時會開始執行一個m-tile GEMM
-        - 其他配置
+            - Systolic array已經可以執行下個大循環時, `ready` = 1'b1
+            - en與ready同時為high時會開始執行一個大循環
+        - 其他配置,在en=1時config要同時傳送, en與ready同時為high時會成功傳入Systolic.v
             - act_base_addr
-                - 這個m-tile的第一組activation address
+                - 這個大循環的第一組activation address
             - w_base_addr
-                - 這個m-tile的第一組activation address
+                - 這個大循環的第一組activation address
             - k_tile_cnt
-                - 這個m-tile包含多少個k-tile
-                - i.e.多少次16 by 16 GEMM累加
-                - eg: patch embedding [196, 768] * [768, 384], 對應就是ceil(768/16) = 48
+                - 這個大循環包含多少個k-tile
+                - i.e.16 by 16 GEMM的次數
+                - eg: QKV Projection 為例 `act[197, 384]` by `weight[384, 1152]`, 對應就是ceil(384/16) = 24次
     2. To BRAM (直接存取BRAM)
         ```v
         output [16:0] act_bram_addr, 
@@ -44,7 +60,16 @@ Systolic
         input [127:0] act_bram_row, //input data
         input [127:0] w_bram_row, //input data
         ```
-        - 考慮bram的 word配置成128'的狀況
+        - BRAM的 word配置成`128'`, 單次讀取拿到`128'`
+        - addr, data傳輸行為與SRAM相同, cycle 0傳addr, cyc1要拿到值
+        - act_bram_valid, w_bram_valid
+            1. enable之後大循環內的`k_tile_cnt` 個`[16, 16]` by `[16, 16]` GEMM都要從bram載w, act進入FIFO/PE
+            2. 每次載入[16, 16] weight, activation前Systolic都會檢查valid, w, act兩者都valid時才會開始載入資料
+                - 防止bram還沒load完所需資料, systolic就去存取
+            3. valid只需要1個cycle, 然後會連續讀完[16, 16], 中間不會再檢查valid
+                - i.e. 至少要確保[16, 16] by [16, 16]的`w`, `act`各自在同個bram上連續存放
+                    - eg: 不能`w[1~12, 16]`在bram1, `w[13~16, 16]`在bram2
+            4. 直到算下個`[16, 16]` by `[16, 16]`時才再次檢查valid
     3. To PPU
         ```v
         output opsum_valid,

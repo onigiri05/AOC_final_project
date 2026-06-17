@@ -18,6 +18,7 @@ reg [2:0] cs, ns;
 localparam IDLE = 2'b0, OP = 2'd1, OUT = 2'd2;
 reg signed [31:0] psum_buffer [15:0][15:0]; //acc buff
 reg [3:0] acc_row_ptr;
+reg [1:0] row_rst_flag;
 reg [3:0] out_row, out_col; //0~255
 reg module_ready_, opsum_valid_;
 assign module_ready = module_ready_;
@@ -48,12 +49,13 @@ always @(posedge clk) begin //FSM
             //accumulator
             acc_row_ptr <= 4'd9;
             for(i = 0; i<16; i = i +1) begin
-                for(j=0; j<16; j=+1) begin
+                for(j=0; j<16; j=j+1) begin
                     psum_buffer [i][j]<= 32'b0;
                 end
             end
             out_row <= 4'd0;
             out_col <= 4'd0;
+            row_rst_flag <= 3'b0;
         end
         OP: begin //m-tile, no need to clear
             // == 1, acc
@@ -68,9 +70,19 @@ always @(posedge clk) begin //FSM
                         skew_latch [i][j+1] <= skew_latch[i][j];
                     end
                 end
+                
+                if((&row_rst_flag) & (&acc_row_ptr)) begin
+                    row_rst_flag <= 2'b0;
+                    acc_row_ptr <= 4'd9;
+                end
+                else begin
+                    acc_row_ptr <= acc_row_ptr + 4'd1;
+                    row_rst_flag[0] <= (acc_row_ptr==4'd8) | row_rst_flag[0]; //all 0 => set flag
+                    row_rst_flag[1] <= row_rst_flag[0] & (acc_row_ptr==4'd8) |row_rst_flag[1];
+                end
+                
 
                 //accumulator
-                acc_row_ptr <= (&acc_row_ptr)?4'd9 : acc_row_ptr + 4'd1;
                 psum_buffer[acc_row_ptr][15] <= psum_buffer[acc_row_ptr][15] + $signed(psum_in[319:300]); //direct from input
                 psum_buffer[acc_row_ptr][14] <= psum_buffer[acc_row_ptr][14] + $signed(psum_in[299:280]); //direct from input
 

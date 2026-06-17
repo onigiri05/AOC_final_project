@@ -3,6 +3,9 @@ module Opsum_acc(
     input clk,
     input rst,
 
+    input push_bias,
+    input [127:0] bias_in,
+    
     input push_row,
     input [319:0] psum_in, //peak: 16*20', 0 at [19:0], 16 at [319:300]
     input end_of_acc, // last pusm input, m-tile finish (accumulate all k) 
@@ -59,7 +62,23 @@ always @(posedge clk) begin //FSM
         end
         OP: begin //m-tile, no need to clear
             // == 1, acc
-            if(push_row) begin
+            if(push_bias) begin
+                for(i = 0; i<16; i= i+1) begin
+                    psum_buffer[i][12] <= bias_in[31:0];
+                    psum_buffer[i][13] <= bias_in[63:32];    
+                    psum_buffer[i][14] <= bias_in[95:64];    
+                    psum_buffer[i][15] <= bias_in[127:96];
+                end
+                for(j=8; j>=0; j = j-4) begin
+                    for(i = 0; i<16; i= i+1) begin
+                        psum_buffer[i][j] <= psum_buffer[i][j+4];
+                        psum_buffer[i][j+1] <= psum_buffer[i][j+4+1];    
+                        psum_buffer[i][j+2] <= psum_buffer[i][j+4+2];    
+                        psum_buffer[i][j+3] <= psum_buffer[i][j+4+3];
+                    end
+                end
+            end
+            else if(push_row) begin
                 //skew latch
                 for(i = 0; i<7; i= i+1) begin //input
                     skew_latch[i][i][19:0] <= psum_in[40*i+:20];

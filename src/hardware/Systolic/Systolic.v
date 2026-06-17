@@ -11,15 +11,19 @@ module Systolic(
     output reg module_ready,      // module able to use
     input [16:0] act_base_addr, // BRAM total: 4096 * 140 B, / 8B per word, 17' addr
     input [16:0] w_base_addr,
+    input [16:0] bias_base_addr,
     input [6:0] k_tile_cnt, //at most 96, at FC2
 
     // BRAM(SRAM) input data, for each k-tile
     output [16:0] act_bram_addr, 
     output [16:0] w_bram_addr,
+    output [16:0] bias_bram_addr,
     input act_bram_valid, 
     input w_bram_valid,
+    input bias_bram_valid,
     input [127:0] act_bram_row,
     input [127:0] w_bram_row,
+    input [127:0] bias_bram_row,
 
     //ppu.sv
     output opsum_valid,
@@ -32,15 +36,18 @@ parameter IDLE=2'd0, LOAD_PARA=2'd1, OP=2'd2;
 reg unsigned [5:0] ctr64; //in state
 reg unsigned [2:0] ctr8; // in state
 reg unsigned [6:0] ctr_tile; //global
+reg unsigned [2:0] ctr_bias; //global
 
-reg [16:0] act_base_addr_r, w_base_addr_r;
+reg [16:0] act_base_addr_r, w_base_addr_r, bias_base_addr_r;
 reg [6:0] k_tile_cnt_r;
 
 assign act_bram_addr = act_base_addr_r + ctr64;
 assign w_bram_addr = w_base_addr_r + ctr64;
+assign bias_bram_addr = bias_base_addr_r + ctr_bias;
 reg push_w_act;
 wire push_act_row = push_w_act; 
 wire push_w_row = push_w_act;
+reg push_bias;
 reg pass;
 reg m_tile_end;
 
@@ -89,6 +96,7 @@ always @(posedge clk) begin
             if(en) begin //store para, for the whole m-tile
                 act_base_addr_r <= act_base_addr;
                 w_base_addr_r <= w_base_addr;
+                bias_base_addr_r <= bias_base_addr;
                 k_tile_cnt_r <= k_tile_cnt;
             end
 
@@ -97,36 +105,35 @@ always @(posedge clk) begin
             ctr8 <= 3'd0;
             ctr_tile <= 7'd1;
             push_w_act <= 1'b0;
+            ctr_bias <= 3'b0;
         end
         LOAD_PARA: begin
             //load 16 row of w, act
-            ctr64 <= (act_bram_valid && w_bram_valid) ? ctr64 + 6'd1: ctr64;
-            
+            ctr64 <= (act_bram_valid & w_bram_valid & ((psum_buff_ready&bias_bram_valid)|ctr_bias[2])) ? ctr64 + 6'd1: ctr64;
+            ctr_bias <= (act_bram_valid & w_bram_valid & psum_buff_ready &bias_bram_valid) & (~ctr_bias[2]) ? ctr_bias +3'd1: ctr_bias;
             if(ctr64 == 6'd16) begin //15 + 1 for sync bram
                 ctr64 <= 6'd0;
                 act_base_addr_r <= act_base_addr_r + 17'd16; //base for nxt k-tile
                 w_base_addr_r <= w_base_addr_r + 17'd16;
             end
-
-            ctr8 <= 3'd0;
-            push_w_act <= ((act_bram_valid & w_bram_valid) | push_w_act) & (~ctr64[4]);
+            push_bias <= ((act_bram_valid & w_bram_valid & ((psum_buff_ready&bias_bram_valid)|ctr_bias[2])) | push_bias) & (~ctr_bias[2]);
+            push_w_act <= ((act_bram_valid & w_bram_valid & ((psum_buff_ready&bias_bram_valid)|ctr_bias[2])) | push_w_act) & (~ctr64[4]);
         end
         OP: begin
-            if(psum_buff_ready) begin
-                if(ctr8 == 3'd4) begin //count 5 cycle
-                    ctr8 <= 3'b0; //ctr8 ==0 => en(comb)
-                    
-                    if(ctr64 == 6'd38) begin //finish 16 by 16 GEMM
-                        ctr64 <= 6'd0;
-                        ctr_tile <= ctr_tile + 7'd1;
-                    end 
-                    else begin
-                        ctr64 <= ctr64 + 6'd1;                    
-                    end
-                end
+            
+            if(ctr8 == 3'd4) begin //count 5 cycle
+                ctr8 <= 3'b0; //ctr8 ==0 => en(comb)
+                
+                if(ctr64 == 6'd38) begin //finish 16 by 16 GEMM
+                    ctr64 <= 6'd0;
+                    ctr_tile <= ctr_tile + 7'd1;
+                end 
                 else begin
-                    ctr8 <= ctr8 + 3'b1;
+                    ctr64 <= ctr64 + 6'd1;                    
                 end
+            end
+            else begin
+                ctr8 <= ctr8 + 3'b1;
             end
             push_w_act <= 1'b0;
         end
@@ -198,6 +205,9 @@ Act_fifo act_buff(
 Opsum_acc psum_buff(
     .clk(clk),
     .rst(rst),
+
+    .push_bias(push_bias),
+    .bias_in(bias_bram_row),
 
     .push_row(pass),
     .psum_in(psum_buff_i), //peak: 16*20', 0 at [19:0], 16 at [319:300]

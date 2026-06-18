@@ -21,9 +21,9 @@ module Systolic(
     input act_bram_valid, 
     input w_bram_valid,
     input bias_bram_valid,
-    input [127:0] act_bram_row,
-    input [127:0] w_bram_row,
-    input [127:0] bias_bram_row,
+    input [31:0] act_bram_data,
+    input [31:0] w_bram_data,
+    input [31:0] bias_bram_data,
 
     //ppu.sv
     output opsum_valid,
@@ -33,21 +33,38 @@ reg [1:0] cs;
 reg [1:0] ns;
 parameter IDLE=2'd0, LOAD_PARA=2'd1, OP=2'd2;
 
-reg unsigned [5:0] ctr64; //in state
+reg unsigned [6:0] ctr64; //in state
 reg unsigned [2:0] ctr8; // in state
 reg unsigned [6:0] ctr_tile; //global
-reg unsigned [2:0] ctr_bias; //global
+reg unsigned [4:0] ctr_bias; //global
 
 reg [16:0] act_base_addr_r, w_base_addr_r, bias_base_addr_r;
 reg [6:0] k_tile_cnt_r;
 
 assign act_bram_addr = act_base_addr_r + ctr64;
 assign w_bram_addr = w_base_addr_r + ctr64;
-assign bias_bram_addr = bias_base_addr_r + ctr_bias;
-reg push_w_act;
-wire push_act_row = push_w_act; 
-wire push_w_row = push_w_act;
-reg push_bias;
+wire bias_load_done = (ctr_bias == 5'd16);
+assign bias_bram_addr = bias_base_addr_r + (bias_load_done ? 17'd15 : {12'd0, ctr_bias});
+
+reg load_word_valid;
+reg [6:0] load_word_idx;
+reg bias_word_valid;
+reg [4:0] bias_word_idx;
+reg [95:0] act_word_buf;
+reg [95:0] w_word_buf;
+reg [95:0] bias_word_buf;
+
+wire load_row_done = load_word_valid & (load_word_idx[1:0] == 2'd3);
+wire final_load_data = load_word_valid & (load_word_idx == 7'd63);
+wire bias_group_done = bias_word_valid & (bias_word_idx[1:0] == 2'd3);
+wire [127:0] act_row_in = {act_bram_data, act_word_buf};
+wire [127:0] w_row_in = {w_bram_data, w_word_buf};
+wire [127:0] bias_row_in = {bias_bram_data, bias_word_buf};
+wire push_act_row = load_row_done;
+wire push_w_row = load_row_done;
+wire push_bias = bias_group_done;
+wire psum_buff_ready;
+wire can_load_word = act_bram_valid & w_bram_valid & ((psum_buff_ready & bias_bram_valid) | bias_load_done);
 reg pass;
 reg m_tile_end;
 
@@ -62,7 +79,6 @@ wire [19:0] psum [15+1:0][15:0];
 
 wire [127:0] act_fifo_o;
 wire [319:0] psum_buff_i;
-wire psum_buff_ready;
 
 always @(posedge clk) begin
     if(rst) begin
@@ -74,7 +90,7 @@ always @(posedge clk) begin
                 cs <= en?LOAD_PARA:cs;
             end
             LOAD_PARA: begin
-                cs <= (ctr64 == 6'd16)?OP :LOAD_PARA;
+                cs <= final_load_data ? OP :LOAD_PARA;
             end
             OP: begin
                 if(ctr64 == 6'd38 && ctr8 == 3'd4) begin //finish 16 by 16 GEMM
@@ -91,8 +107,26 @@ always @(posedge clk) begin
 end
 
 always @(posedge clk) begin
-    case(cs)
-        IDLE: begin
+    if(rst) begin
+        act_base_addr_r <= 17'd0;
+        w_base_addr_r <= 17'd0;
+        bias_base_addr_r <= 17'd0;
+        k_tile_cnt_r <= 7'd0;
+        ctr64 <= 7'd0;
+        ctr8 <= 3'd0;
+        ctr_tile <= 7'd1;
+        ctr_bias <= 5'd0;
+        load_word_valid <= 1'b0;
+        load_word_idx <= 7'd0;
+        bias_word_valid <= 1'b0;
+        bias_word_idx <= 5'd0;
+        act_word_buf <= 96'd0;
+        w_word_buf <= 96'd0;
+        bias_word_buf <= 96'd0;
+    end
+    else begin
+        case(cs)
+            IDLE: begin
             if(en) begin //store para, for the whole m-tile
                 act_base_addr_r <= act_base_addr;
                 w_base_addr_r <= w_base_addr;
@@ -101,43 +135,91 @@ always @(posedge clk) begin
             end
 
             //reset data flow regs
-            ctr64 <= 6'b0;
+            ctr64 <= 7'd0;
             ctr8 <= 3'd0;
             ctr_tile <= 7'd1;
-            push_w_act <= 1'b0;
-            ctr_bias <= 3'b0;
+            ctr_bias <= 5'd0;
+            load_word_valid <= 1'b0;
+            load_word_idx <= 7'd0;
+            bias_word_valid <= 1'b0;
+            bias_word_idx <= 5'd0;
+            act_word_buf <= 96'd0;
+            w_word_buf <= 96'd0;
+            bias_word_buf <= 96'd0;
         end
         LOAD_PARA: begin
-            //load 16 row of w, act
-            ctr64 <= (act_bram_valid & w_bram_valid & ((psum_buff_ready&bias_bram_valid)|ctr_bias[2])) ? ctr64 + 6'd1: ctr64;
-            ctr_bias <= (act_bram_valid & w_bram_valid & psum_buff_ready &bias_bram_valid) & (~ctr_bias[2]) ? ctr_bias +3'd1: ctr_bias;
-            if(ctr64 == 6'd16) begin //15 + 1 for sync bram
-                ctr64 <= 6'd0;
-                act_base_addr_r <= act_base_addr_r + 17'd16; //base for nxt k-tile
-                w_base_addr_r <= w_base_addr_r + 17'd16;
+            //load 16 rows of w/act from 64 32-bit BRAM words
+            if(load_word_valid) begin
+                case(load_word_idx[1:0])
+                    2'd0: begin
+                        act_word_buf[31:0] <= act_bram_data;
+                        w_word_buf[31:0] <= w_bram_data;
+                    end
+                    2'd1: begin
+                        act_word_buf[63:32] <= act_bram_data;
+                        w_word_buf[63:32] <= w_bram_data;
+                    end
+                    2'd2: begin
+                        act_word_buf[95:64] <= act_bram_data;
+                        w_word_buf[95:64] <= w_bram_data;
+                    end
+                    default: begin
+                        act_word_buf <= 96'd0;
+                        w_word_buf <= 96'd0;
+                    end
+                endcase
             end
-            push_bias <= ((act_bram_valid & w_bram_valid & ((psum_buff_ready&bias_bram_valid)|ctr_bias[2])) | push_bias) & (~ctr_bias[2]);
-            push_w_act <= ((act_bram_valid & w_bram_valid & ((psum_buff_ready&bias_bram_valid)|ctr_bias[2])) | push_w_act) & (~ctr64[4]);
+
+            if(bias_word_valid) begin
+                case(bias_word_idx[1:0])
+                    2'd0: bias_word_buf[31:0] <= bias_bram_data;
+                    2'd1: bias_word_buf[63:32] <= bias_bram_data;
+                    2'd2: bias_word_buf[95:64] <= bias_bram_data;
+                    default: bias_word_buf <= 96'd0;
+                endcase
+            end
+
+            load_word_valid <= 1'b0;
+            bias_word_valid <= 1'b0;
+
+            if(final_load_data) begin
+                ctr64 <= 7'd0;
+                act_base_addr_r <= act_base_addr_r + 17'd64; //base for nxt k-tile
+                w_base_addr_r <= w_base_addr_r + 17'd64;
+            end
+            else if(can_load_word & (ctr64 < 7'd64)) begin
+                load_word_idx <= ctr64;
+                load_word_valid <= 1'b1;
+                ctr64 <= ctr64 + 7'd1;
+            end
+
+            if(can_load_word & (~bias_load_done)) begin
+                bias_word_idx <= ctr_bias;
+                bias_word_valid <= 1'b1;
+                ctr_bias <= ctr_bias + 5'd1;
+            end
         end
         OP: begin
+            load_word_valid <= 1'b0;
+            bias_word_valid <= 1'b0;
             
             if(ctr8 == 3'd4) begin //count 5 cycle
                 ctr8 <= 3'b0; //ctr8 ==0 => en(comb)
                 
                 if(ctr64 == 6'd38) begin //finish 16 by 16 GEMM
-                    ctr64 <= 6'd0;
+                    ctr64 <= 7'd0;
                     ctr_tile <= ctr_tile + 7'd1;
                 end 
                 else begin
-                    ctr64 <= ctr64 + 6'd1;                    
+                    ctr64 <= ctr64 + 7'd1;                    
                 end
             end
             else begin
                 ctr8 <= ctr8 + 3'b1;
             end
-            push_w_act <= 1'b0;
         end
-    endcase
+        endcase
+    end
 end
 
 //state, ctrl sig, i/o
@@ -196,7 +278,7 @@ Act_fifo act_buff(
     .rst(rst),
 
     .push_row(push_act_row),                 // write 1 row, when act valid && act ready
-    .act_row_in(act_bram_row),
+    .act_row_in(act_row_in),
 
     .pop_row(pass),                  // output 1 skewed row
     .act_row_out(act_fifo_o)
@@ -207,7 +289,7 @@ Opsum_acc psum_buff(
     .rst(rst),
 
     .push_bias(push_bias),
-    .bias_in(bias_bram_row),
+    .bias_in(bias_row_in),
 
     .push_row(pass),
     .psum_in(psum_buff_i), //peak: 16*20', 0 at [19:0], 16 at [319:300]
@@ -223,8 +305,8 @@ genvar i,j;
 generate
     for(j=0; j<8; j=j+1) begin // => row 15
         //weight row 0, fr input, interleave
-        assign W0 [16][j] = w_bram_row[8*2*j+:8];
-        assign W1 [16][j] = {{6{w_bram_row[8*(2*j+1)+7]}}, w_bram_row[8*(2*j+1)+:8], 16'b0}; 
+        assign W0 [16][j] = w_row_in[8*2*j+:8];
+        assign W1 [16][j] = {{6{w_row_in[8*(2*j+1)+7]}}, w_row_in[8*(2*j+1)+:8], 16'b0}; 
                             //sign [24:17], {6{W1[7]}}, W1, 16'b0
     end
     for (i=0; i<16; i=i+1) begin
@@ -262,5 +344,6 @@ generate
         end
     end
 endgenerate
+
 
 endmodule

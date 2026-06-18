@@ -24,7 +24,8 @@ src
         // ==============================================================
         ```
         分別用weight / activation / bias BRAM換掉
-    - BRAM配置成 128 bit per word, 單次讀寫128 bit
+    - 原本:BRAM配置成 128 bit per word, 單次讀寫128 bit
+    - == 修改成:因BRAM data port 是 32bit，所以修改成單次讀寫32 bit，再加上3clk 組成128bit ==
     - 會同時讀取weight, activation, bias, 3個要分開放在不同BRAM
     - 存取BRAM相關的 Control signal
         - base_addr

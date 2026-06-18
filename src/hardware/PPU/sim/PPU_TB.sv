@@ -1,6 +1,7 @@
 
 `timescale 1ns/1ps
 `include "../ASIC.svh"
+`include "../PPU.sv"
 
 module PPU_TB;
 

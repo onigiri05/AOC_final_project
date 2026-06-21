@@ -1,0 +1,25 @@
+{
+  "hardware": {
+    "name": "PYNQ-Z2_16x16_systolic",
+    "pe_rows": 16,
+    "pe_cols": 16,
+    "clock_hz": 100000000.0,
+    "dram_peak_bandwidth_Bps": 2100000000.0,
+    "dram_efficiency": 0.5,
+    "bram_capacity_bytes": 573440,
+    "tile_m": 16,
+    "tile_n": 16,
+    "tile_k": 16,
+    "bram_service_bytes_per_cycle": 32.0,
+    "dsp_packing_factor": 2.0,
+    "pingpong_enabled": true
+  },
+  "energy": {
+    "energy_per_fp32_mac_pj": 4.0,
+    "energy_per_int8_mac_pj": 1.0,
+    "energy_per_bram_byte_pj": 5.0,
+    "energy_per_dram_byte_pj": 200.0,
+    "energy_per_lut_access_pj": 1.0,
+    "leakage_power_w": 0.2
+  }
+}

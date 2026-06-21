@@ -1,0 +1,34 @@
+{
+  "baseline_b": {
+    "name": "vit_small_patch16_224.augreg_in21k_ft_in1k",
+    "image_size": 224,
+    "patch_size": 16,
+    "in_channels": 3,
+    "num_classes": 1000,
+    "tokens": 197,
+    "embed_dim": 384,
+    "num_heads": 6,
+    "head_dim": 64,
+    "mlp_dim": 1536,
+    "num_blocks": 12,
+    "qkv_out_dim": 1152,
+    "has_cls_token": true,
+    "source": "parsed_from_timm"
+  },
+  "optimized": {
+    "name": "rms_qat_best.pt",
+    "image_size": 224,
+    "patch_size": 16,
+    "in_channels": 3,
+    "num_classes": 1000,
+    "tokens": 197,
+    "embed_dim": 384,
+    "num_heads": 6,
+    "head_dim": 64,
+    "mlp_dim": 1536,
+    "num_blocks": 12,
+    "qkv_out_dim": 1152,
+    "has_cls_token": true,
+    "source": "parsed_from_checkpoint:rms_qat_best.pt"
+  }
+}

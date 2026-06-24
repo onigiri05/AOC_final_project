@@ -1,9 +1,7 @@
 # Verilator 編譯產物（可重新 make，不需上傳）
-src/hardware/flash_attn/obj_dir/
+obj_dir/
 
 # 編譯後的可執行檔
-test/testbench/vit/build/
-test/testbench/flash_attn/build/
 build/
 
 # 靜態函式庫
@@ -26,7 +24,8 @@ Thumbs.db
 
 # FST waveform 檔
 *.fst
+*.fsdb
 
 # log 輸出
-build/logs/
+build/
 *.log

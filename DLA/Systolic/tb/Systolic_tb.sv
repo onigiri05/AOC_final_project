@@ -113,6 +113,8 @@ initial begin
         // 在負緣比對資料，此時 opsum 絕對已經穩定半個 cycle 了
         if(opsum !== golden_rom[cnt]) begin
             err_cnt = err_cnt + 1;
+            $display("At cnt %d, opsum got 0x%x, golden got 0x%x", 
+                            cnt, opsum, golden_rom[cnt]);
         end
         `ifdef SHOW
             $display("At cnt %d, opsum got 0x%x, golden got 0x%x", 

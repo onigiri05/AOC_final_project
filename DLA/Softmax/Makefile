@@ -15,9 +15,9 @@ MACROS       :=
 # Environment / Logic Mapping
 #################################################################
 
-ifeq ($(LEVEL), 2)
+ifeq ($(CASE), 2)
 	TB_FILE := $(ROOT_DIR)/$(TB_DIR)/tb_Softmax_Unit_Level2.sv
-else ifeq ($(LEVEL), 3)
+else ifeq ($(CASE), 3)
 	TB_FILE := $(ROOT_DIR)/$(TB_DIR)/tb_Softmax_Unit_Level3.sv
 else
 	TB_FILE := $(ROOT_DIR)/$(TB_DIR)/tb_Softmax_Unit_Level1.sv
@@ -30,11 +30,6 @@ else ifeq ($(DUMP),2)
     MACROS += FSDB_ALL
 else
 	NO_MEM_CBK := -memcbk
-endif
-
-# Show output value on terminal
-ifeq ($(SHOW), 1)
-	MACROS += SHOW
 endif
 
 # Flags Processing

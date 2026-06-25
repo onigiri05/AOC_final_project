@@ -1,0 +1,924 @@
+{
+  "summary": {
+    "scope": "block11 only; exact PT block11 input",
+    "scale_policy": "per-stage PT activation dynamic calibration",
+    "images": 3,
+    "top1_agreement": 1.0,
+    "mean_logit_cosine": 0.7784181212259992,
+    "mean_block11_cosine": 0.8186603330672303
+  },
+  "samples": [
+    {
+      "image": "/home/yingunix/AOC_final_project/DLA/DLA_model/Image/n01440764_10040.jpg",
+      "pt_top1": 0,
+      "dlau_top1": 0,
+      "top1_match": true,
+      "logit_cosine": 0.813021083697667,
+      "block11_cosine": 0.8436476788209598,
+      "shifts": {
+        "norm1_left": 3,
+        "qkv": 8,
+        "attention_value": 6,
+        "projection": 13,
+        "norm2_left": 4,
+        "fc1": 8,
+        "fc2": 12
+      },
+      "scales": {
+        "00_input": 1.9880254550242986,
+        "01_norm1": 0.125,
+        "02_qkv": 0.09685904585470365,
+        "03_softmax": 0.0078125,
+        "04_attention_value": 0.04842952292735182,
+        "05_projection": 1.3668436660836445,
+        "06_attention_residual": 1.3668436660836445,
+        "07_norm2": 0.0625,
+        "08_fc1_linear": 0.00019766648453990306,
+        "09_gelu": 0.050602620042215184,
+        "10_fc2": 2.381200979227533,
+        "11_block11_output": 2.381200979227533,
+        "12_final_norm": null,
+        "13_classifier_logits": null
+      },
+      "layers": [
+        {
+          "layer": "00_input",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 1.9880254550242986,
+          "mae": 0.49617317909401737,
+          "rmse": 0.5732829583656763,
+          "max_abs_error": 0.9939824277021749,
+          "cosine": 0.9910732094698862,
+          "saturation": 0.0
+        },
+        {
+          "layer": "01_norm1",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 0.125,
+          "mae": 0.18816124558798142,
+          "rmse": 0.22562731529072308,
+          "max_abs_error": 1.693678855895996,
+          "cosine": 0.9872995952940935,
+          "saturation": 0.0
+        },
+        {
+          "layer": "02_qkv",
+          "shape": [
+            197,
+            1152
+          ],
+          "scale": 0.09685904585470365,
+          "mae": 0.19239506343053012,
+          "rmse": 0.2501043527688998,
+          "max_abs_error": 3.176018647321566,
+          "cosine": 0.9898064282758654,
+          "saturation": 0.00016744218838127468
+        },
+        {
+          "layer": "03_softmax",
+          "shape": [
+            6,
+            197,
+            197
+          ],
+          "scale": 0.0078125,
+          "mae": 0.003509436235257678,
+          "rmse": 0.0178658933453244,
+          "max_abs_error": 0.6433318555355072,
+          "cosine": 0.9084528535891774,
+          "saturation": 0.9000017178145963
+        },
+        {
+          "layer": "04_attention_value",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 0.04842952292735182,
+          "mae": 0.29919707739847545,
+          "rmse": 0.39906647180359356,
+          "max_abs_error": 4.196832557949494,
+          "cosine": 0.9415835451038771,
+          "saturation": 0.0
+        },
+        {
+          "layer": "05_projection",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 1.3668436660836445,
+          "mae": 0.7973883338261134,
+          "rmse": 0.9670664490033223,
+          "max_abs_error": 4.287226265037425,
+          "cosine": 0.8503853146764181,
+          "saturation": 0.0
+        },
+        {
+          "layer": "06_attention_residual",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 1.3668436660836445,
+          "mae": 0.9707137516669452,
+          "rmse": 1.2475781704719549,
+          "max_abs_error": 75.94420705329307,
+          "cosine": 0.9602429231065416,
+          "saturation": 0.0
+        },
+        {
+          "layer": "07_norm2",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 0.0625,
+          "mae": 0.2860662909904716,
+          "rmse": 0.3570853090703826,
+          "max_abs_error": 1.782027006149292,
+          "cosine": 0.9517179827127409,
+          "saturation": 3.965736040609137e-05
+        },
+        {
+          "layer": "08_fc1_linear",
+          "shape": [
+            197,
+            1536
+          ],
+          "scale": 0.00019766648453990306,
+          "mae": 0.26830294173823027,
+          "rmse": 0.3457537406452574,
+          "max_abs_error": 2.565997187312194,
+          "cosine": 0.9824820740014854,
+          "saturation": null
+        },
+        {
+          "layer": "09_gelu",
+          "shape": [
+            197,
+            1536
+          ],
+          "scale": 0.050602620042215184,
+          "mae": 0.1758371558791225,
+          "rmse": 0.39808283494786123,
+          "max_abs_error": 6.428043365478516,
+          "cosine": 0.0,
+          "saturation": 0.0
+        },
+        {
+          "layer": "10_fc2",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.381200979227533,
+          "mae": 1.5104439590777916,
+          "rmse": 1.8564252431875035,
+          "max_abs_error": 19.53148785211232,
+          "cosine": 0.3710592488877128,
+          "saturation": 0.0
+        },
+        {
+          "layer": "11_block11_output",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.381200979227533,
+          "mae": 2.1947568804880966,
+          "rmse": 2.6525423281862417,
+          "max_abs_error": 67.92970937000626,
+          "cosine": 0.8436476788209598,
+          "saturation": 0.0
+        },
+        {
+          "layer": "12_final_norm",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": null,
+          "mae": 1.096837648324337,
+          "rmse": 1.3488839284050862,
+          "max_abs_error": 7.864460040534956,
+          "cosine": 0.8264037037416639,
+          "saturation": null
+        },
+        {
+          "layer": "13_classifier_logits",
+          "shape": [
+            1000
+          ],
+          "scale": null,
+          "mae": 0.7070135242387294,
+          "rmse": 0.8853885927056124,
+          "max_abs_error": 2.804961751322416,
+          "cosine": 0.813021083697667,
+          "saturation": null
+        }
+      ],
+      "attention_heatmap": {
+        "directory": "/home/yingunix/AOC_final_project/DLA/DLA_model/results/heatmaps/block11/n01440764_10040/block11",
+        "pt": {
+          "head_count": 6,
+          "grid": [
+            14,
+            14
+          ],
+          "top_patches": [
+            {
+              "rank": 1,
+              "row": 1,
+              "col": 2,
+              "score": 0.06236867979168892
+            },
+            {
+              "rank": 2,
+              "row": 0,
+              "col": 2,
+              "score": 0.04154243801409999
+            },
+            {
+              "rank": 3,
+              "row": 7,
+              "col": 9,
+              "score": 0.029366420678949606
+            },
+            {
+              "rank": 4,
+              "row": 7,
+              "col": 6,
+              "score": 0.025664333273501445
+            },
+            {
+              "rank": 5,
+              "row": 6,
+              "col": 8,
+              "score": 0.02381307779190441
+            }
+          ],
+          "entropy": 4.596306575868709,
+          "max_score": 0.06236867979168892
+        },
+        "dlau": {
+          "head_count": 6,
+          "grid": [
+            14,
+            14
+          ],
+          "top_patches": [
+            {
+              "rank": 1,
+              "row": 1,
+              "col": 2,
+              "score": 0.10026041666666667
+            },
+            {
+              "rank": 2,
+              "row": 6,
+              "col": 8,
+              "score": 0.06510416666666667
+            },
+            {
+              "rank": 3,
+              "row": 0,
+              "col": 2,
+              "score": 0.053385416666666664
+            },
+            {
+              "rank": 4,
+              "row": 7,
+              "col": 6,
+              "score": 0.041666666666666664
+            },
+            {
+              "rank": 5,
+              "row": 11,
+              "col": 11,
+              "score": 0.03515625
+            }
+          ],
+          "entropy": 3.669100468585577,
+          "max_score": 0.10026041666666667
+        },
+        "mean_abs_diff": 0.0025862165486156847,
+        "cosine": 0.9288631226782778
+      }
+    },
+    {
+      "image": "/home/yingunix/AOC_final_project/DLA/DLA_model/Image/n01440764_10194.jpg",
+      "pt_top1": 0,
+      "dlau_top1": 0,
+      "top1_match": true,
+      "logit_cosine": 0.7348425047365208,
+      "block11_cosine": 0.8281277252582894,
+      "shifts": {
+        "norm1_left": 4,
+        "qkv": 9,
+        "attention_value": 6,
+        "projection": 14,
+        "norm2_left": 4,
+        "fc1": 8,
+        "fc2": 12
+      },
+      "scales": {
+        "00_input": 2.0953251395638532,
+        "01_norm1": 0.0625,
+        "02_qkv": 0.09685904585470365,
+        "03_softmax": 0.0078125,
+        "04_attention_value": 0.04842952292735182,
+        "05_projection": 2.733687332167289,
+        "06_attention_residual": 2.733687332167289,
+        "07_norm2": 0.0625,
+        "08_fc1_linear": 0.00019766648453990306,
+        "09_gelu": 0.050602620042215184,
+        "10_fc2": 2.381200979227533,
+        "11_block11_output": 2.381200979227533,
+        "12_final_norm": null,
+        "13_classifier_logits": null
+      },
+      "layers": [
+        {
+          "layer": "00_input",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.0953251395638532,
+          "mae": 0.5235132334705103,
+          "rmse": 0.6044238899977985,
+          "max_abs_error": 1.0476501532426967,
+          "cosine": 0.9909784122186188,
+          "saturation": 0.0
+        },
+        {
+          "layer": "01_norm1",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 0.0625,
+          "mae": 0.18641354032020768,
+          "rmse": 0.2234634427337663,
+          "max_abs_error": 2.034961700439453,
+          "cosine": 0.987537122129567,
+          "saturation": 0.00046266920473773265
+        },
+        {
+          "layer": "02_qkv",
+          "shape": [
+            197,
+            1152
+          ],
+          "scale": 0.09685904585470365,
+          "mae": 0.19238210838898953,
+          "rmse": 0.25074769963890875,
+          "max_abs_error": 1.7558115035530153,
+          "cosine": 0.9898339104575749,
+          "saturation": 1.762549351381839e-05
+        },
+        {
+          "layer": "03_softmax",
+          "shape": [
+            6,
+            197,
+            197
+          ],
+          "scale": 0.0078125,
+          "mae": 0.0030985035367615973,
+          "rmse": 0.016295064554177223,
+          "max_abs_error": 0.5237760543823242,
+          "cosine": 0.9325303849395542,
+          "saturation": 0.8754885035258144
+        },
+        {
+          "layer": "04_attention_value",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 0.04842952292735182,
+          "mae": 0.26224036444412363,
+          "rmse": 0.37480729906299076,
+          "max_abs_error": 3.533733818474717,
+          "cosine": 0.965257724709931,
+          "saturation": 0.0002643824027072758
+        },
+        {
+          "layer": "05_projection",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.733687332167289,
+          "mae": 1.4212969552968333,
+          "rmse": 1.6709331956979734,
+          "max_abs_error": 5.4887213706970215,
+          "cosine": 0.7701897192260536,
+          "saturation": 0.0
+        },
+        {
+          "layer": "06_attention_residual",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.733687332167289,
+          "mae": 1.6082388823922107,
+          "rmse": 1.9495085255741575,
+          "max_abs_error": 7.026836257962508,
+          "cosine": 0.9354364754970163,
+          "saturation": 0.0
+        },
+        {
+          "layer": "07_norm2",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 0.0625,
+          "mae": 0.41506913344200197,
+          "rmse": 0.5088820999612179,
+          "max_abs_error": 2.5649296045303345,
+          "cosine": 0.920216859176748,
+          "saturation": 1.321912013536379e-05
+        },
+        {
+          "layer": "08_fc1_linear",
+          "shape": [
+            197,
+            1536
+          ],
+          "scale": 0.00019766648453990306,
+          "mae": 0.3378989918499374,
+          "rmse": 0.43693520133985514,
+          "max_abs_error": 3.5015359449339662,
+          "cosine": 0.9702952379784424,
+          "saturation": null
+        },
+        {
+          "layer": "09_gelu",
+          "shape": [
+            197,
+            1536
+          ],
+          "scale": 0.050602620042215184,
+          "mae": 0.2056611194648566,
+          "rmse": 0.4666432578948532,
+          "max_abs_error": 7.154412269592285,
+          "cosine": 0.0,
+          "saturation": 0.0
+        },
+        {
+          "layer": "10_fc2",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.381200979227533,
+          "mae": 1.6854910097549411,
+          "rmse": 2.0816926573627326,
+          "max_abs_error": 10.422749906555682,
+          "cosine": 0.2616738019310831,
+          "saturation": 0.0
+        },
+        {
+          "layer": "11_block11_output",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.381200979227533,
+          "mae": 2.7107455770235145,
+          "rmse": 3.2242463041175355,
+          "max_abs_error": 12.539996704059522,
+          "cosine": 0.8281277252582894,
+          "saturation": 0.0
+        },
+        {
+          "layer": "12_final_norm",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": null,
+          "mae": 1.1900987318283285,
+          "rmse": 1.4667746095577894,
+          "max_abs_error": 9.443793073140379,
+          "cosine": 0.7969064874916608,
+          "saturation": null
+        },
+        {
+          "layer": "13_classifier_logits",
+          "shape": [
+            1000
+          ],
+          "scale": null,
+          "mae": 0.7093092686237127,
+          "rmse": 0.9038133638044777,
+          "max_abs_error": 2.9182115841408134,
+          "cosine": 0.7348425047365208,
+          "saturation": null
+        }
+      ],
+      "attention_heatmap": {
+        "directory": "/home/yingunix/AOC_final_project/DLA/DLA_model/results/heatmaps/block11/n01440764_10194/block11",
+        "pt": {
+          "head_count": 6,
+          "grid": [
+            14,
+            14
+          ],
+          "top_patches": [
+            {
+              "rank": 1,
+              "row": 5,
+              "col": 10,
+              "score": 0.22393633797764778
+            },
+            {
+              "rank": 2,
+              "row": 5,
+              "col": 8,
+              "score": 0.10950512788258493
+            },
+            {
+              "rank": 3,
+              "row": 5,
+              "col": 9,
+              "score": 0.06681252585258335
+            },
+            {
+              "rank": 4,
+              "row": 4,
+              "col": 9,
+              "score": 0.030378672943091562
+            },
+            {
+              "rank": 5,
+              "row": 4,
+              "col": 11,
+              "score": 0.025264361962399562
+            }
+          ],
+          "entropy": 3.6635067923332505,
+          "max_score": 0.22393633797764778
+        },
+        "dlau": {
+          "head_count": 6,
+          "grid": [
+            14,
+            14
+          ],
+          "top_patches": [
+            {
+              "rank": 1,
+              "row": 5,
+              "col": 10,
+              "score": 0.3502604166666667
+            },
+            {
+              "rank": 2,
+              "row": 5,
+              "col": 8,
+              "score": 0.11197916666666667
+            },
+            {
+              "rank": 3,
+              "row": 4,
+              "col": 10,
+              "score": 0.06510416666666667
+            },
+            {
+              "rank": 4,
+              "row": 5,
+              "col": 9,
+              "score": 0.0546875
+            },
+            {
+              "rank": 5,
+              "row": 7,
+              "col": 6,
+              "score": 0.049479166666666664
+            }
+          ],
+          "entropy": 2.5656510581027843,
+          "max_score": 0.3502604166666667
+        },
+        "mean_abs_diff": 0.0025682206068898578,
+        "cosine": 0.9724485320862762
+      }
+    },
+    {
+      "image": "/home/yingunix/AOC_final_project/DLA/DLA_model/Image/n01582220_10061.jpg",
+      "pt_top1": 18,
+      "dlau_top1": 18,
+      "top1_match": true,
+      "logit_cosine": 0.7873907752438095,
+      "block11_cosine": 0.7842055951224418,
+      "shifts": {
+        "norm1_left": 3,
+        "qkv": 8,
+        "attention_value": 6,
+        "projection": 14,
+        "norm2_left": 3,
+        "fc1": 7,
+        "fc2": 12
+      },
+      "scales": {
+        "00_input": 1.9819377989280882,
+        "01_norm1": 0.125,
+        "02_qkv": 0.09685904585470365,
+        "03_softmax": 0.0078125,
+        "04_attention_value": 0.04842952292735182,
+        "05_projection": 2.733687332167289,
+        "06_attention_residual": 2.733687332167289,
+        "07_norm2": 0.125,
+        "08_fc1_linear": 0.0003953329690798061,
+        "09_gelu": 0.050602620042215184,
+        "10_fc2": 2.381200979227533,
+        "11_block11_output": 2.381200979227533,
+        "12_final_norm": null,
+        "13_classifier_logits": null
+      },
+      "layers": [
+        {
+          "layer": "00_input",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 1.9819377989280882,
+          "mae": 0.4961201154006555,
+          "rmse": 0.5724463399145837,
+          "max_abs_error": 0.990947696636981,
+          "cosine": 0.9908862519819237,
+          "saturation": 0.0
+        },
+        {
+          "layer": "01_norm1",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 0.125,
+          "mae": 0.1891723189671711,
+          "rmse": 0.2274861811201939,
+          "max_abs_error": 1.7546253204345703,
+          "cosine": 0.986702665511635,
+          "saturation": 0.0
+        },
+        {
+          "layer": "02_qkv",
+          "shape": [
+            197,
+            1152
+          ],
+          "scale": 0.09685904585470365,
+          "mae": 0.19503621728216844,
+          "rmse": 0.25724961099195853,
+          "max_abs_error": 4.334221772321566,
+          "cosine": 0.9891690959438016,
+          "saturation": 0.0006521432600112803
+        },
+        {
+          "layer": "03_softmax",
+          "shape": [
+            6,
+            197,
+            197
+          ],
+          "scale": 0.0078125,
+          "mae": 0.003696461034163133,
+          "rmse": 0.01920236809443978,
+          "max_abs_error": 0.6262888759374619,
+          "cosine": 0.8949736284220855,
+          "saturation": 0.8815867453425752
+        },
+        {
+          "layer": "04_attention_value",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 0.04842952292735182,
+          "mae": 0.3057401041224066,
+          "rmse": 0.41262698456620434,
+          "max_abs_error": 3.4556708223237766,
+          "cosine": 0.9561893540087794,
+          "saturation": 0.0
+        },
+        {
+          "layer": "05_projection",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.733687332167289,
+          "mae": 1.4384015896600015,
+          "rmse": 1.679282518881873,
+          "max_abs_error": 5.39580399330891,
+          "cosine": 0.7591397269995724,
+          "saturation": 0.0
+        },
+        {
+          "layer": "06_attention_residual",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.733687332167289,
+          "mae": 1.5923759252812946,
+          "rmse": 1.925214909526015,
+          "max_abs_error": 6.673454895089375,
+          "cosine": 0.9156406703838904,
+          "saturation": 0.0
+        },
+        {
+          "layer": "07_norm2",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 0.125,
+          "mae": 0.4628425497840965,
+          "rmse": 0.5618781110602576,
+          "max_abs_error": 3.3588874340057373,
+          "cosine": 0.8940485273062053,
+          "saturation": 0.0
+        },
+        {
+          "layer": "08_fc1_linear",
+          "shape": [
+            197,
+            1536
+          ],
+          "scale": 0.0003953329690798061,
+          "mae": 0.3814335123218042,
+          "rmse": 0.49517696844539605,
+          "max_abs_error": 4.249508467480892,
+          "cosine": 0.9631883136706201,
+          "saturation": null
+        },
+        {
+          "layer": "09_gelu",
+          "shape": [
+            197,
+            1536
+          ],
+          "scale": 0.050602620042215184,
+          "mae": 0.18547688737588422,
+          "rmse": 0.4200602429090261,
+          "max_abs_error": 5.959830576979269,
+          "cosine": 0.7198986335252029,
+          "saturation": 0.0
+        },
+        {
+          "layer": "10_fc2",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.381200979227533,
+          "mae": 1.574194739459888,
+          "rmse": 1.9346671735313876,
+          "max_abs_error": 16.308320432678727,
+          "cosine": 0.3175690338545374,
+          "saturation": 0.0
+        },
+        {
+          "layer": "11_block11_output",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": 2.381200979227533,
+          "mae": 2.6495741128342747,
+          "rmse": 3.1260896437367096,
+          "max_abs_error": 18.410318016115305,
+          "cosine": 0.7842055951224418,
+          "saturation": 0.0
+        },
+        {
+          "layer": "12_final_norm",
+          "shape": [
+            197,
+            384
+          ],
+          "scale": null,
+          "mae": 1.325991519527075,
+          "rmse": 1.6203572319859305,
+          "max_abs_error": 10.385516804537843,
+          "cosine": 0.7664982161886039,
+          "saturation": null
+        },
+        {
+          "layer": "13_classifier_logits",
+          "shape": [
+            1000
+          ],
+          "scale": null,
+          "mae": 0.6245031383047899,
+          "rmse": 0.7931446391718415,
+          "max_abs_error": 3.0551029868493806,
+          "cosine": 0.7873907752438095,
+          "saturation": null
+        }
+      ],
+      "attention_heatmap": {
+        "directory": "/home/yingunix/AOC_final_project/DLA/DLA_model/results/heatmaps/block11/n01582220_10061/block11",
+        "pt": {
+          "head_count": 6,
+          "grid": [
+            14,
+            14
+          ],
+          "top_patches": [
+            {
+              "rank": 1,
+              "row": 3,
+              "col": 12,
+              "score": 0.15401610609842464
+            },
+            {
+              "rank": 2,
+              "row": 5,
+              "col": 9,
+              "score": 0.04762259513760606
+            },
+            {
+              "rank": 3,
+              "row": 0,
+              "col": 6,
+              "score": 0.03047106135636568
+            },
+            {
+              "rank": 4,
+              "row": 1,
+              "col": 6,
+              "score": 0.029514208901673555
+            },
+            {
+              "rank": 5,
+              "row": 6,
+              "col": 7,
+              "score": 0.028971787600312382
+            }
+          ],
+          "entropy": 4.295150666232354,
+          "max_score": 0.15401610609842464
+        },
+        "dlau": {
+          "head_count": 6,
+          "grid": [
+            14,
+            14
+          ],
+          "top_patches": [
+            {
+              "rank": 1,
+              "row": 3,
+              "col": 12,
+              "score": 0.4244791666666667
+            },
+            {
+              "rank": 2,
+              "row": 5,
+              "col": 9,
+              "score": 0.06380208333333333
+            },
+            {
+              "rank": 3,
+              "row": 0,
+              "col": 6,
+              "score": 0.044270833333333336
+            },
+            {
+              "rank": 4,
+              "row": 3,
+              "col": 9,
+              "score": 0.033854166666666664
+            },
+            {
+              "rank": 5,
+              "row": 0,
+              "col": 4,
+              "score": 0.029947916666666668
+            }
+          ],
+          "entropy": 2.465927347695838,
+          "max_score": 0.4244791666666667
+        },
+        "mean_abs_diff": 0.00348490886571182,
+        "cosine": 0.9267564212008838
+      }
+    }
+  ]
+}

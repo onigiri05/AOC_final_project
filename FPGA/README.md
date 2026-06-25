@@ -166,7 +166,7 @@ design/
 
 ## 1.5 撰寫並執行 ipynb
 
-Python Notebook 會負責和 FPGA 上的硬體互動，包含：
+Python Notebook 會負責和 FPGA 上的硬體互動，以 systolic 舉例：
 
 - 載入 bitstream
 - 透過 `.hwh` 找到硬體 IP

@@ -254,7 +254,7 @@ systolic_RTL/
 
 ## 2.3 與原本 Systolic Array 的差異
 
-原本的 Systolic Array README 中，主要模組只有：
+原本的 DLA 資料夾下 Systolic Array README 中，主要模組只有：
 
 ```text
 src/
@@ -462,7 +462,7 @@ FPGA_AOC_systolic/
 
 ## 2.6 hex 測資說明
 
-`hex/` 內的測資是從原本 Systolic Array unit test 延伸使用的資料。
+`hex/` 內的測資是從原本 DLA 資料夾 Systolic Array unit test 延伸使用的資料。
 
 每個 case 通常會包含：
 
@@ -535,38 +535,3 @@ Full design 目前尚未補上完整說明。
 
 ---
 
-# 4. 建議 Repo 結構
-
-建議 `FPGA/` 資料夾整理如下：
-
-```text
-FPGA/
-├── README.md
-├── images/
-│   ├── fpga_network_setting.png
-│   ├── fpga_windows_share.png
-│   ├── jupyter_home.png
-│   ├── jupyter_design_folder.png
-│   ├── jupyter_run_notebook.png
-│   ├── systolic_RTL_structure.png
-│   └── FPGA_AOC_systolic_structure.png
-│
-├── systolic_RTL/
-│   ├── ActivationMem.v
-│   ├── BiasMem.v
-│   ├── InputLoadFSM.v
-│   ├── OutputCaptureFSM.v
-│   ├── OutputMem.v
-│   ├── Systolic.v
-│   ├── SystolicAxiLiteWrapper.v
-│   ├── SystolicSystemCore.v
-│   ├── WeightMem.v
-│   └── WeightPingPongController.v
-│
-└── FPGA_AOC_systolic/
-    ├── hex/
-    ├── design_1_wrapper.bit
-    ├── design_1_wrapper.hwh
-    ├── sds_trace_data.dat
-    └── systolic.ipynb
-```

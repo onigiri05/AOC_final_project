@@ -1,6 +1,6 @@
 # FPGA README
 
-本資料夾主要放置 AOC Final Project 在 FPGA 上驗證需要的檔案，包含 FPGA bitstream、hardware handoff file、Python Notebook 測試程式、Systolic Array RTL，以及 unit test 使用的 hex 測資。
+本資料夾主要放置 AOC Final Project 在 FPGA 上驗證需要的檔案，包含 FPGA bitstream、hardware handoff file、Python Notebook 測試程式、RTL code 與 測資。
 
 整體分成兩個部分：
 

@@ -445,12 +445,6 @@ FPGA_AOC_systolic/
 ├── design_1_wrapper.hwh
 ├── sds_trace_data.dat
 └── systolic.ipynb
-```
-
-> 此圖為目前 `FPGA_AOC_systolic/` 的資料夾內容。
-
-![FPGA AOC systolic folder](images/FPGA_AOC_systolic_structure.png)
-
 ---
 
 ## 2.5 FPGA_AOC_systolic 檔案說明

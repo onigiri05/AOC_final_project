@@ -462,9 +462,9 @@ FPGA_AOC_systolic/
 
 ## 2.6 hex 測資說明
 
-`hex/` 內的測資是從原本 DLA 資料夾 Systolic Array unit test 延伸使用的資料。
+`hex/` 內存放測資。
 
-每個 case 通常會包含：
+每個 case 會包含：
 
 ```text
 act.hex

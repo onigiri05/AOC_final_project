@@ -1,0 +1,31 @@
+# 由 conda 環境 aoc2026_lab1 匯出（2026-06-25），僅保留本資料夾 7 個 notebook 實際 import 的套件
+# 重現環境：
+#   conda create -n aoc2026_lab1 python=3.12.3
+#   conda activate aoc2026_lab1
+#   pip install -r requirements.txt
+#
+# 完整環境另有 tensorflow / jupyterlab 等課程共用套件，與本實驗無關，故不列入。
+# 若要連同 Jupyter 一併安裝，請額外執行：pip install jupyterlab ipykernel
+
+torch==2.9.1+cu128
+torchvision==0.24.1+cu128
+torchaudio==2.9.1+cu128
+--extra-index-url https://download.pytorch.org/whl/cu128
+
+timm==1.0.26
+transformers==5.10.2
+datasets==4.8.5
+huggingface-hub==1.11.0
+accelerate==1.13.0
+
+numpy==1.26.4
+pandas==3.0.1
+scipy==1.17.1
+scikit-learn==1.8.0
+
+matplotlib==3.10.8
+seaborn==0.13.2
+pillow==12.0.0
+
+tqdm==4.67.3
+pyyaml==6.0.3

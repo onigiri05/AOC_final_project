@@ -4,8 +4,8 @@
 
 整體分成兩個部分：
 
-1. **Systolic Array Unit Test**：單獨驗證 systolic array IP 是否可以在 FPGA 上正確運算。
-2. **Full Design**：完整 ViT Accelerator 設計整合驗證，目前此部分仍為 TBD。
+1. **Systolic Array Unit Test**：單獨驗證 systolic array IP 是否可以在 FPGA 上正確運算，直接由 python code 寫 data 進 BRAM。
+2. **Full Design**： ViT Accelerator one block 設計整合 FPGA 上的 DDR 來模擬 RTL 與 DRAM 溝通驗證。
 
 ---
 

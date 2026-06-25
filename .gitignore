@@ -1,6 +1,9 @@
 # Verilator 編譯產物（可重新 make，不需上傳）
 obj_dir/
 
+# 權重
+*.pt
+
 # 編譯後的可執行檔
 build/
 

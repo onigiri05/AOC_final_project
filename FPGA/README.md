@@ -235,12 +235,6 @@ systolic_RTL/
 └── WeightPingPongController.v
 ```
 
-> 此圖為目前 `systolic_RTL/` 的資料夾內容。
-
-![systolic RTL folder](images/systolic_RTL_structure.png)
-
----
-
 ## 2.2 RTL Module 說明
 
 | 檔案 | 功能說明 |

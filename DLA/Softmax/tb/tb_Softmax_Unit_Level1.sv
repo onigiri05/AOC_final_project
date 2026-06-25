@@ -1,4 +1,5 @@
 `timescale 1ns/1ps
+`include "Softmax_Unit.sv"
 // Self-checking testbench for Softmax_Unit_0618_1324.sv
 // Put the referenced HEX files and exp_lut_10bit_Q1_15_range12.hex
 // in XSim's working directory, or replace the filenames with absolute paths.
@@ -34,15 +35,16 @@ module tb_Softmax_Unit_Level1;
     );
 
     initial begin
-        $readmemh("score_int32_padded.hex", g_score);
-        $readmemh("mask.hex", g_mask);
-        $readmemh("scores_shifted_int32_padded.hex", g_shifted);
-        $readmemh("max_score_shifted_int32.hex", g_max);
-        $readmemh("int_diff_int32_padded.hex", g_diff);
-        $readmemh("lut_index_uint10_padded.hex", g_lut_idx);
-        $readmemh("exp_uq15_padded.hex", g_exp);
-        $readmemh("exp_sum_uint32.hex", g_sum);
-        $readmemh("attention_q07_padded.hex", g_attn);
+        $readmemh("../hex/level1/score_int32_padded.hex", g_score);
+        $readmemh("../hex/level1/mask.hex", g_mask);
+        $readmemh("../hex/level1/scores_shifted_int32_padded.hex", g_shifted);
+        $readmemh("../hex/level1/max_score_shifted_int32.hex", g_max);
+        $readmemh("../hex/level1/int_diff_int32_padded.hex", g_diff);
+        $readmemh("../hex/level1/lut_index_uint10_padded.hex", g_lut_idx);
+        $readmemh("../hex/level1/exp_uq15_padded.hex", g_exp);
+        $readmemh("../hex/level1/exp_sum_uint32.hex", g_sum);
+        $readmemh("../hex/level1/attention_q07_padded.hex", g_attn);
+        $readmemh("../hex/exp_lut_10bit_Q1_15_range12.hex", dut.exp_lut_rom);
 
         #1;
         for (i=0;i<208;i=i+1) begin
@@ -131,4 +133,15 @@ end
         else $fatal(1,"LEVEL 1 FAIL: %0d final mismatches",errors);
         #20; $finish;
     end
+
+initial begin
+    `ifdef FSDB
+    $fsdbDumpfile("top.fsdb"); 
+    $fsdbDumpvars(0); //all signal
+    `elsif FSDB_ALL
+    $fsdbDumpfile("top.fsdb");
+    $fsdbDumpvars(0, "+mda"); //expand memory/ array
+    `endif
+end
+
 endmodule

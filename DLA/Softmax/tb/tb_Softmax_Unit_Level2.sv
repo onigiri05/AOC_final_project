@@ -1,4 +1,5 @@
 `timescale 1ns/1ps
+`include "Softmax_Unit.sv"
 
 module tb_Softmax_Unit_Level2;
 
@@ -82,13 +83,14 @@ module tb_Softmax_Unit_Level2;
     // Load Level 2 golden data
     // ------------------------------------------------------------------------
     initial begin
-        $readmemh("score_int32_padded.hex", g_score);
-        $readmemh("mask_padded.hex", g_mask);
-        $readmemh("scores_shifted_int32_padded.hex", g_shifted);
-        $readmemh("max_score_shifted_int32.hex", g_max);
-        $readmemh("exp_uq15_padded.hex", g_exp);
-        $readmemh("exp_sum_uint32.hex", g_sum);
-        $readmemh("attention_q07_padded.hex", g_attn);
+        $readmemh("../hex/level2/score_int32_padded.hex", g_score);
+        $readmemh("../hex/level2/mask_padded.hex", g_mask);
+        $readmemh("../hex/level2/scores_shifted_int32_padded.hex", g_shifted);
+        $readmemh("../hex/level2/max_score_shifted_int32.hex", g_max);
+        $readmemh("../hex/level2/exp_uq15_padded.hex", g_exp);
+        $readmemh("../hex/level2/exp_sum_uint32.hex", g_sum);
+        $readmemh("../hex/level2/attention_q07_padded.hex", g_attn);
+        $readmemh("../hex/exp_lut_10bit_Q1_15_range12.hex", dut.exp_lut_rom);
     end
 
     // ------------------------------------------------------------------------
@@ -404,5 +406,15 @@ module tb_Softmax_Unit_Level2;
         #20;
         $finish;
     end
+
+initial begin
+    `ifdef FSDB
+    $fsdbDumpfile("top.fsdb"); 
+    $fsdbDumpvars(0); //all signal
+    `elsif FSDB_ALL
+    $fsdbDumpfile("top.fsdb");
+    $fsdbDumpvars(0, "+mda"); //expand memory/ array
+    `endif
+end
 
 endmodule

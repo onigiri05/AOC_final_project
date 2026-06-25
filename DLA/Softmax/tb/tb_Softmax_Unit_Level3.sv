@@ -1,4 +1,5 @@
 `timescale 1ns/1ps
+`include "Softmax_Unit.sv"
 // Self-checking testbench for Softmax_Unit_0618_1324.sv
 // Put the referenced HEX files and exp_lut_10bit_Q1_15_range12.hex
 // in XSim's working directory, or replace the filenames with absolute paths.
@@ -30,11 +31,12 @@ module tb_Softmax_Unit_Level3;
     );
 
     initial begin
-        $readmemh("score_int32_padded.hex",all_score);
-        $readmemh("mask_padded.hex",all_mask);
-        $readmemh("max_score_shifted_int32.hex",all_max);
-        $readmemh("exp_sum_uint32.hex",all_sum);
-        $readmemh("attention_q07_padded.hex",all_attn);
+        $readmemh("../hex/level3/score_int32_padded.hex",all_score);
+        $readmemh("../hex/level3/mask_padded.hex",all_mask);
+        $readmemh("../hex/level3/max_score_shifted_int32.hex",all_max);
+        $readmemh("../hex/level3/exp_sum_uint32.hex",all_sum);
+        $readmemh("../hex/level3/attention_q07_padded.hex",all_attn);
+        $readmemh("../hex/exp_lut_10bit_Q1_15_range12.hex", dut.exp_lut_rom);
 
         repeat(4) @(posedge clk);
         rst_n=1;
@@ -83,4 +85,15 @@ module tb_Softmax_Unit_Level3;
             $fatal(1,"LEVEL 3 FAIL: %0d mismatch(es).",total_errors);
         #20; $finish;
     end
+
+initial begin
+    `ifdef FSDB
+    $fsdbDumpfile("top.fsdb"); 
+    $fsdbDumpvars(0); //all signal
+    `elsif FSDB_ALL
+    $fsdbDumpfile("top.fsdb");
+    $fsdbDumpvars(0, "+mda"); //expand memory/ array
+    `endif
+end
+
 endmodule

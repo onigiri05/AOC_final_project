@@ -59,13 +59,14 @@ module Softmax_Unit (
     (* rom_style = "distributed" *)
     logic [15:0] exp_lut_rom [0:LUT_DEPTH-1];
 
+    /*
     initial begin
         $readmemh(
             "exp_lut_10bit_Q1_15_range12.hex",
             exp_lut_rom
         );
     end
-    
+    */
     // ------------------------------------------------------------------------
     // Convert shifted-score difference to 10-bit LUT index.
     // int_diff = scores_shifted - max_scores_shifted <= 0

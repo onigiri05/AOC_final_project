@@ -117,12 +117,10 @@ Password：xilinx
 
 就代表 FPGA 已經成功開機，而且筆電也成功連線到 FPGA。
 
-> 下面兩張圖可以放 FPGA 網路設定與 Windows 檔案總管連線成功的截圖。
-> 請將圖片放在 `images/` 資料夾內，並依照實際檔名調整路徑。
 
-![FPGA network setting](images/fpga_network_setting.png)
+![FPGA network setting](images/image1.jpg)
 
-![FPGA Windows share connection](images/fpga_windows_share.png)
+![FPGA Windows share connection](images/image2.jpg)
 
 ---
 
@@ -198,14 +196,12 @@ xilinx
 
 登入後進入自己建立的 design 資料夾，打開 `.ipynb`，直接按 `Run` 或 `Run All` 即可執行 FPGA 測試。
 
-> 下面三張圖可以放 Jupyter Notebook 首頁、design 資料夾，以及執行 notebook 的截圖。
-> 請將圖片放在 `images/` 資料夾內，並依照實際檔名調整路徑。
 
-![Jupyter home](images/jupyter_home.png)
+![Jupyter home](images/image3.jpg)
 
-![Jupyter design folder](images/jupyter_design_folder.png)
+![Jupyter design folder](images/image4.jpg)
 
-![Run notebook](images/jupyter_run_notebook.png)
+![Run notebook](images/image5.jpg)
 
 ---
 

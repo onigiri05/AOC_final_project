@@ -1,0 +1,60 @@
+{
+  "kind": "rtl_real_model_block0",
+  "description": "Real checkpoint vectors for the current one-block integer RTL dataflow.",
+  "checkpoint": "C:\\Users\\angelliu.LAPTOP-3NTJHQPG\\Downloads\\golden_gen\\rms_qat_best.pt",
+  "image_source": "C:\\Users\\angelliu.LAPTOP-3NTJHQPG\\Downloads\\golden_gen\\n01440764_10194.jpg",
+  "block_index": 0,
+  "rtl_scope": "one ViT block; current RTL does not iterate all 12 blocks",
+  "patch_requant_shift": 0,
+  "tile_layout": {
+    "token_tile": 8,
+    "channel_tile": 8,
+    "tile_row_words": 2,
+    "weight_tile_words": 16,
+    "bias_tile_words": 8
+  },
+  "fixed_rtl_shifts": {
+    "qkv": 2,
+    "attn_v": 2,
+    "out_proj": 1,
+    "fc1": 0,
+    "fc2": 1,
+    "softmax_q": 4,
+    "softmax_k": 4
+  },
+  "scales": {
+    "x_scale": 0.1458874746104313,
+    "patch_w_scale": 0.1458874746104313,
+    "qkv_out_scale": 0.0625,
+    "qkv_w_scale": 0.015625,
+    "attn_v_out_scale": 0.001953125,
+    "out_proj_w_scale": 37.347193500270414,
+    "fc1_w_scale": 0.0009765625,
+    "fc2_w_scale": 0.07294373730521565
+  },
+  "clip_counts": {
+    "patch_w": 0,
+    "qkv_w": 0,
+    "out_proj_w": 0,
+    "fc1_w": 23104,
+    "fc2_w": 0
+  },
+  "word_counts": {
+    "image.hex": 37632,
+    "raw_image.hex": 37632,
+    "pos.hex": 18912,
+    "position.hex": 18912,
+    "cls.hex": 96,
+    "gamma.hex": 768,
+    "patch_weight.hex": 73728,
+    "patch_bias.hex": 384,
+    "transformer_weight.hex": 180224,
+    "transformer_bias.hex": 2048,
+    "weight.hex": 180224,
+    "bias.hex": 2048,
+    "x_out.hex": 75648,
+    "x_out_packed.hex": 18912
+  },
+  "expected_value": "x_out.hex contains one uint8 activation per 32-bit word low byte",
+  "compare_mode": "exact_rtl_integer_model"
+}

@@ -236,34 +236,7 @@ module Streaming_RMSNorm_Unit #(
     parameter int X_W         = `RMS_X_W,
     parameter int SCALE_W     = `RMS_SCALE_W,
     parameter int FRAC        = `RMS_FRAC,
-    parameter int OUT_SHIFT   = `RMS_OUT_SHIFT,
-
-    // ============================================================
-    // External activation format control
-    //
-    // EXT_IN_ZP128 = 1:
-    //   x_in is external uint8 zero-point-128 format.
-    //   The unit internally converts it to signed INT8 before RMSNorm core.
-    //
-    // EXT_IN_ZP128 = 0:
-    //   x_in is already signed INT8.
-    //
-    // EXT_OUT_ZP128 = 1:
-    //   y_out is external uint8 zero-point-128 format.
-    //
-    // EXT_OUT_ZP128 = 0:
-    //   y_out is signed INT8.
-    //
-    // Recommended for full accelerator integration:
-    //   EXT_IN_ZP128  = 1
-    //   EXT_OUT_ZP128 = 1
-    //
-    // Recommended for old standalone signed-INT8 TB:
-    //   EXT_IN_ZP128  = 0
-    //   EXT_OUT_ZP128 = 0
-    // ============================================================
-    parameter bit EXT_IN_ZP128  = 1'b1,
-    parameter bit EXT_OUT_ZP128 = 1'b1
+    parameter int OUT_SHIFT   = `RMS_OUT_SHIFT
 )(
     input  logic clk,
     input  logic rst_n,
@@ -278,13 +251,10 @@ module Streaming_RMSNorm_Unit #(
     // ----------------------------
     // input activation stream
     // 來源：Activation-Residual Buffer / Global Buffer
-    //
-    // 若 EXT_IN_ZP128=1，x_in 是 uint8 zero-point-128。
-    // 若 EXT_IN_ZP128=0，x_in 是 signed INT8 bit pattern。
     // ----------------------------
     input  logic                         x_valid,
     output logic                         x_ready,
-    input  logic        [X_W-1:0]         x_in,
+    input  logic signed [X_W-1:0]         x_in,
 
     // ----------------------------
     // Token Stat SRAM read port
@@ -302,15 +272,12 @@ module Streaming_RMSNorm_Unit #(
 
     // ----------------------------
     // output normalized activation stream
-    // 目的地：RowPacker / Activation BRAM
-    //
-    // 若 EXT_OUT_ZP128=1，y_out 是 uint8 zero-point-128。
-    // 若 EXT_OUT_ZP128=0，y_out 是 signed INT8 bit pattern。
+    // 目的地：Activation FIFO
     // ----------------------------
     output logic                         y_valid,
     input  logic                         y_ready,
     output logic                         y_last,
-    output logic        [X_W-1:0]         y_out
+    output logic signed [X_W-1:0]         y_out
 );
 
     logic running;
@@ -329,55 +296,6 @@ module Streaming_RMSNorm_Unit #(
 
     logic accept_input;
     logic last_input;
-
-    // ------------------------------------------------------------
-    // External format conversion
-    //
-    // The RMSNorm core itself always computes in signed INT8.
-    // These adapters allow the external accelerator datapath to keep
-    // activations in uint8 zero-point-128 format.
-    // ------------------------------------------------------------
-    logic signed [X_W-1:0] core_x_in;
-    logic signed [X_W-1:0] core_y_out;
-
-    function automatic logic signed [X_W-1:0] ext_to_core_s8;
-        input logic [X_W-1:0] q;
-        begin
-            if (EXT_IN_ZP128) begin
-                // uint8 zero-point-128 -> signed INT8
-                // 0   -> -128
-                // 127 -> -1
-                // 128 -> 0
-                // 255 -> 127
-                ext_to_core_s8 = $signed({~q[X_W-1], q[X_W-2:0]});
-            end
-            else begin
-                // external data is already signed INT8 bit pattern
-                ext_to_core_s8 = $signed(q);
-            end
-        end
-    endfunction
-
-    function automatic logic [X_W-1:0] core_s8_to_ext;
-        input logic signed [X_W-1:0] s;
-        begin
-            if (EXT_OUT_ZP128) begin
-                // signed INT8 -> uint8 zero-point-128
-                // -128 -> 0
-                // -1   -> 127
-                // 0    -> 128
-                // 127  -> 255
-                core_s8_to_ext = {~s[X_W-1], s[X_W-2:0]};
-            end
-            else begin
-                // keep signed INT8 bit pattern
-                core_s8_to_ext = s[X_W-1:0];
-            end
-        end
-    endfunction
-
-    assign core_x_in = ext_to_core_s8(x_in);
-    assign y_out     = core_s8_to_ext(core_y_out);
 
     assign busy = running;
 
@@ -412,7 +330,7 @@ module Streaming_RMSNorm_Unit #(
         .in_ready(core_in_ready),
         .in_last(core_in_last),
 
-        .x_in(core_x_in),
+        .x_in(x_in),
         .inv_rms_in(inv_rms_data),
         .gamma_in(gamma_data),
 
@@ -420,7 +338,7 @@ module Streaming_RMSNorm_Unit #(
         .out_ready(core_out_ready),
         .out_last(core_out_last),
 
-        .y_out(core_y_out)
+        .y_out(y_out)
     );
 
     // ------------------------------------------------------------

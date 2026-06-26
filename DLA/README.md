@@ -31,9 +31,15 @@ DLA README
 >   >
 >   > 用python實作的`DLA演算法模型`, 對應的是我們預期DLA硬體要執行的演算法。
 
+> [!warning] 環境
+> - vcs
+> - verdi
+> - python3 with numpy, Pillow, torch, timm
+
 [TOC]
 # Makefile
 > 執行PPU, Softmax, Streaming_RMSNorm_Unit, Systolic 四個 Sub-module 的 Unittest (Simulation)
+> 執行DLA_model eval, 評估硬體推論的準確度
 ```
 $ make
 Usage: make [target] [OPTION FLAGs]
@@ -443,9 +449,17 @@ Checked elements = 75648
 2. compare_12blocks.py
     - 跑end to end的inference, 並比較.pt模型與DLA每個block的output activation
     - 比較結果會輸出到`./DLA_model/results`
-3. compare_block11.py
+        包含
+        - block11.md: 每層的比較數據, cosine, mse, rmse等評估標準
+        - block11.json: 更詳細的數據, 包含scale等
+        - heatmaps: optional, 用熱圖表現attention head主要關注的區塊
+1. compare_block11.py
     - 跑Block11的inference, 並比較.pt模型與DLA每個layer的output activation
     - 比較結果會輸出到`./DLA_model/results`
+        包含
+        - 12blocks.md: 每層的比較數據, cosine, mse, rmse等評估標準
+        - 12blocks.json: 更詳細的數據, 包含scale等
+        - heatmaps: optional, 用熱圖表現attention head主要關注的區塊
 ## Dependency
 1. 會用到pt權重, 請將`rms_qat_best.pt`放在`AOC_final_project/PT_DIR`
    ```
@@ -464,5 +478,5 @@ Checked elements = 75648
     numpy
     Pillow
     torch
-    tim
+    timm
     ```

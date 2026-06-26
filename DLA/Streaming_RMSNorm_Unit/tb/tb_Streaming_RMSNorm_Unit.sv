@@ -282,6 +282,16 @@ module tb_Streaming_RMSNorm_Unit;
     end
 
     initial begin
+        `ifdef FSDB
+        $fsdbDumpfile("top.fsdb"); 
+        $fsdbDumpvars(0); //all signal
+        `elsif FSDB_ALL
+        $fsdbDumpfile("top.fsdb");
+        $fsdbDumpvars(0, "+mda"); //expand memory/ array
+        `endif
+    end
+
+    initial begin
         load_mem_files();
 
         rst_n   = 1'b0;

@@ -205,6 +205,15 @@ module PPU_TB;
     // 主測試流程
     // ==========================================
     initial begin
+        `ifdef FSDB
+        $fsdbDumpfile("top.fsdb"); 
+        $fsdbDumpvars(0); //all signal
+        `elsif FSDB_ALL
+        $fsdbDumpfile("top.fsdb");
+        $fsdbDumpvars(0, "+mda"); //expand memory/ array
+        `endif
+    end
+    initial begin
         
         // 1. 系統重置
         $display("----------------------------------------"); 
@@ -366,14 +375,6 @@ module PPU_TB;
         $display("[System] Simulation Finished."); 
         $finish; 
     end 
-    initial begin
-    `ifdef FSDB
-    $fsdbDumpfile("top.fsdb"); 
-    $fsdbDumpvars(0); //all signal
-    `elsif FSDB_ALL
-    $fsdbDumpfile("top.fsdb");
-    $fsdbDumpvars(0, "+mda"); //expand memory/ array
-    `endif
-    end
+    
 
 endmodule 

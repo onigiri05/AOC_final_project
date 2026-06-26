@@ -1,5 +1,5 @@
 # AOC_final_project
-本專案主要包含以下5個子目錄, 個子目錄的README有詳細的Requirement 和 檔案說明
+本專案主要包含以下5個子目錄, 各子目錄的README有詳細的Requirement 和 檔案說明
 ```
 .
 ├── PT_DIR/                     # 把 rms_qat_best.pt 權重檔放這裡

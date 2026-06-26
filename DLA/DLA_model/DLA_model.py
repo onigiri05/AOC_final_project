@@ -70,7 +70,7 @@ IMAGENET_STD = np.array([0.229, 0.224, 0.225], dtype=np.float64)
 DLA_ROOT = Path(__file__).resolve().parent.parent
 INV_LUT_HEX = DLA_ROOT / "Streaming_RMSNorm_Unit/hardware_export/rmsnorm_inv_sqrt_lut/rms_inv_sqrt_lut_A_global_10bit_Q2_14.hex"
 EXP_LUT_HEX = DLA_ROOT / "Softmax/hex/exp_lut_10bit_Q1_15_range12.hex"
-GELU_SV = DLA_ROOT / "PPU/GELU_Unit.sv"
+GELU_SV = DLA_ROOT / "PPU/src/GELU_Unit.sv"
 
 def pack_u8_to_u32(data: np.ndarray | list[int]) -> list[int]:
     arr = np.asarray(data, dtype=np.uint8).reshape(-1)

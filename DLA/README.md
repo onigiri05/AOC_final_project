@@ -35,6 +35,9 @@ DLA README
 > - vcs
 > - verdi
 > - python3 with numpy, Pillow, torch, timm
+>   ```
+>   pip install numpy Pillow torch timm
+>   ```
 
 [TOC]
 # Makefile

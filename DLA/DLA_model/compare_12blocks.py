@@ -11,10 +11,11 @@ import torch
 
 from compare_block11 import (
     HERE, dequant, linear_dynamic, metric, quant_u8, rescale, rms_dynamic, scale_of,
-    G, make_reference, preprocess, cosine, save_attention_heatmaps,
+    G, make_reference, preprocess, cosine, save_attention_heatmaps, save_metric_line_plots,
 )
 PT_CANDIDATES = [
     (HERE / "../../PT_DIR/rms_qat_best.pt").resolve(),
+    (HERE.parent / "golden_gen" / "rms_qat_best.pt").resolve(),
 ]
 PT = next((path for path in PT_CANDIDATES if path.exists()), PT_CANDIDATES[0])
 IMG_DIR = HERE/"Image/"
@@ -199,12 +200,26 @@ def main() -> None:
                   "- Files per block: `pt_cls_attention.png`, `dlau_cls_attention.png`, "
                   "`abs_diff_attention.png`, `pt_overlay.png`, `dlau_overlay.png`."]
     lines += ["", "## Mean output error by block", "", "| block | cosine | MAE | RMSE | Max abs error|", "|---|---:|---:|---:|---:|"]
+    block_labels: list[str] = []
+    block_cosine: list[float] = []
+    block_mae: list[float] = []
+    block_rmse: list[float] = []
     for block in range(12):
         mean_cos = float(np.mean([s["blocks"][block]["output_cosine"] for s in samples]))
         mean_mae = float(np.mean([s["blocks"][block]["output_mae"] for s in samples]))
         mean_rmse = float(np.mean([s["blocks"][block]["output_rmse"] for s in samples]))
         mean_abse = float(np.mean([s["blocks"][block]["output_abse"] for s in samples]))
+        block_labels.append(f"block{block}")
+        block_cosine.append(mean_cos)
+        block_mae.append(mean_mae)
+        block_rmse.append(mean_rmse)
         lines.append(f"| {block} | {mean_cos:.6f} | {mean_mae:.6f} | {mean_rmse:.6f} | {mean_abse:.6f} |")
+    plot_files = save_metric_line_plots(
+        args.out, "12blocks_output", block_labels, block_cosine, block_mae, block_rmse)
+    lines += ["", "## Metric line plots", ""]
+    lines += [f"- Cosine: `{Path(plot_files['cosine']).as_posix()}`",
+              f"- MAE: `{Path(plot_files['mae']).as_posix()}`",
+              f"- RMSE: `{Path(plot_files['rmse']).as_posix()}`"]
     (args.out / "12blocks.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))
 

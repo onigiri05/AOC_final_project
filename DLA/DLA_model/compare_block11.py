@@ -14,7 +14,7 @@ import math
 from pathlib import Path
 from typing import Any
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -23,6 +23,7 @@ import timm
 HERE = Path(__file__).resolve().parent
 PT_CANDIDATES = [
     (HERE / "../../PT_DIR/rms_qat_best.pt").resolve(),
+    (HERE.parent / "golden_gen" / "rms_qat_best.pt").resolve(),
 ]
 PT = next((path for path in PT_CANDIDATES if path.exists()), PT_CANDIDATES[0])
 IMG_DIR = HERE/"Image/"
@@ -44,6 +45,27 @@ def load_algorithm():
     spec.loader.exec_module(module)
     return module
 G = load_algorithm()
+
+
+def patch_algorithm_paths() -> None:
+    """Keep other_path scripts runnable from any cwd without editing DLA_model.py."""
+    exp_candidates = [
+        getattr(G, "EXP_LUT_HEX", None),
+        HERE.parent / "DLA" / "src" / "LUT" / "exp_lut_10bit_Q1_15_range12.hex",
+    ]
+    gelu_candidates = [
+        getattr(G, "GELU_SV", None),
+        HERE.parent / "DLA" / "src" / "PPU" / "GELU_Unit.sv",
+    ]
+    exp = next((Path(p) for p in exp_candidates if p is not None and Path(p).exists()), None)
+    gelu = next((Path(p) for p in gelu_candidates if p is not None and Path(p).exists()), None)
+    if exp is not None:
+        G.EXP_LUT_HEX = exp
+    if gelu is not None:
+        G.GELU_SV = gelu
+
+
+patch_algorithm_paths()
 
 class RMSNorm(nn.Module):
     def __init__(self, dim: int, eps: float = 1e-6):
@@ -270,6 +292,86 @@ def save_attention_heatmaps(image: Path, pt_prob: np.ndarray, dlau_prob: np.ndar
     }
 
 
+def save_line_plot(labels: list[str], values: list[float], ylabel: str,
+                   title: str, path: Path, y_min: float | None = None,
+                   y_max: float | None = None) -> None:
+    """Write a compact line plot PNG using only Pillow."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    width, height = 960, 420
+    left, right, top, bottom = 78, 28, 34, 92
+    plot_w = width - left - right
+    plot_h = height - top - bottom
+    img = Image.new("RGB", (width, height), "white")
+    draw = ImageDraw.Draw(img)
+    vals = [float(v) for v in values]
+    if not vals:
+        img.save(path)
+        return
+    lo = min(vals) if y_min is None else float(y_min)
+    hi = max(vals) if y_max is None else float(y_max)
+    if math.isclose(lo, hi):
+        pad = 1.0 if hi == 0 else abs(hi) * 0.1
+        lo -= pad
+        hi += pad
+    else:
+        pad = (hi - lo) * 0.08
+        lo = lo - pad if y_min is None else lo
+        hi = hi + pad if y_max is None else hi
+
+    def xy(i: int, v: float) -> tuple[int, int]:
+        x = left + int(round(i * plot_w / max(1, len(vals) - 1)))
+        y = top + int(round((hi - v) * plot_h / (hi - lo)))
+        return x, y
+
+    # Frame and grid.
+    draw.rectangle([left, top, left + plot_w, top + plot_h], outline=(80, 80, 80))
+    for t in range(6):
+        y = top + int(round(t * plot_h / 5))
+        val = hi - t * (hi - lo) / 5
+        draw.line([left, y, left + plot_w, y], fill=(225, 225, 225))
+        draw.text((8, y - 7), f"{val:.4g}", fill=(40, 40, 40))
+
+    points = [xy(i, v) for i, v in enumerate(vals)]
+    if len(points) == 1:
+        x, y = points[0]
+        draw.ellipse([x - 4, y - 4, x + 4, y + 4], fill=(0, 96, 180))
+    else:
+        draw.line(points, fill=(0, 96, 180), width=3)
+        for x, y in points:
+            draw.ellipse([x - 3, y - 3, x + 3, y + 3], fill=(0, 96, 180))
+
+    # X labels: draw all for <=16 points, otherwise sparse.
+    step = 1 if len(labels) <= 16 else max(1, int(math.ceil(len(labels) / 12)))
+    for i, label in enumerate(labels):
+        if i % step != 0 and i != len(labels) - 1:
+            continue
+        x, _ = xy(i, vals[i])
+        draw.line([x, top + plot_h, x, top + plot_h + 5], fill=(80, 80, 80))
+        text = str(label)
+        if len(text) > 14:
+            text = text[:13] + "…"
+        draw.text((x - 28, top + plot_h + 10), text, fill=(40, 40, 40))
+
+    draw.text((left, 8), title, fill=(20, 20, 20))
+    draw.text((8, 10), ylabel, fill=(20, 20, 20))
+    img.save(path)
+
+
+def save_metric_line_plots(outdir: Path, prefix: str, labels: list[str],
+                           cosine_values: list[float], mae_values: list[float],
+                           rmse_values: list[float]) -> dict[str, str]:
+    plot_dir = outdir / "plots"
+    files = {
+        "cosine": plot_dir / f"{prefix}_cosine.png",
+        "mae": plot_dir / f"{prefix}_mae.png",
+        "rmse": plot_dir / f"{prefix}_rmse.png",
+    }
+    save_line_plot(labels, cosine_values, "cosine", f"{prefix} cosine", files["cosine"], 0.0, 1.0)
+    save_line_plot(labels, mae_values, "MAE", f"{prefix} MAE", files["mae"])
+    save_line_plot(labels, rmse_values, "RMSE", f"{prefix} RMSE", files["rmse"])
+    return {name: str(path) for name, path in files.items()}
+
+
 def capture(model: torch.nn.Module, image: Path) -> tuple[dict[str, np.ndarray], np.ndarray]:
     block = model.blocks[11]
     if hasattr(block.attn, "fused_attn"):
@@ -432,6 +534,10 @@ def main() -> None:
                "mean_logit_cosine": float(np.mean([s["logit_cosine"] for s in samples])),
                "mean_block11_cosine": float(np.mean([s["block11_cosine"] for s in samples]))}
     args.out.mkdir(parents=True, exist_ok=True)
+    stage_labels: list[str] = []
+    stage_cosine: list[float] = []
+    stage_mae: list[float] = []
+    stage_rmse: list[float] = []
     (args.out / "block11.json").write_text(
         json.dumps({"summary": summary, "samples": samples}, indent=2) + "\n", encoding="utf-8")
     lines = ["# Block11 dynamic-scale comparison", "",
@@ -452,11 +558,24 @@ def main() -> None:
     for layer in [row["layer"] for row in samples[0]["layers"]]:
         values = [next(row for row in sample["layers"] if row["layer"] == layer)
                   for sample in samples]
+        mean_cos = float(np.mean([row["cosine"] for row in values]))
+        mean_mae = float(np.mean([row["mae"] for row in values]))
+        mean_rmse = float(np.mean([row["rmse"] for row in values]))
+        stage_labels.append(layer)
+        stage_cosine.append(mean_cos)
+        stage_mae.append(mean_mae)
+        stage_rmse.append(mean_rmse)
         lines.append(
-            f"| {layer} | {np.mean([row['cosine'] for row in values]):.6f} "
-            f"| {np.mean([row['mae'] for row in values]):.6f} "
-            f"| {np.mean([row['rmse'] for row in values]):.6f} |"
+            f"| {layer} | {mean_cos:.6f} "
+            f"| {mean_mae:.6f} "
+            f"| {mean_rmse:.6f} |"
         )
+    plot_files = save_metric_line_plots(
+        args.out, "block11_stage", stage_labels, stage_cosine, stage_mae, stage_rmse)
+    lines += ["", "## Metric line plots", ""]
+    lines += [f"- Cosine: `{Path(plot_files['cosine']).as_posix()}`",
+              f"- MAE: `{Path(plot_files['mae']).as_posix()}`",
+              f"- RMSE: `{Path(plot_files['rmse']).as_posix()}`"]
     (args.out / "block11.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(json.dumps(summary, indent=2))
 

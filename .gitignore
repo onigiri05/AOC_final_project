@@ -34,4 +34,4 @@ build/
 *.log
 
 # python 輸出
-DLA/DLA_model/results
+DLA/DLA_model/results/

@@ -29,6 +29,6 @@
     "num_blocks": 12,
     "qkv_out_dim": 1152,
     "has_cls_token": true,
-    "source": "parsed_from_checkpoint:rms_qat_best.pt"
+    "source": "fallback_default_checkpoint_parse_failed"
   }
 }

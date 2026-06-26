@@ -19,43 +19,43 @@ OPTIMIZATION_MAP = [
     {
         "optimization": "LayerNorm to Streaming RMSNorm + LUT",
         "affected_sections": "Norm",
-        "main_metric": "Cycles, memory traffic, LUT accesses",
+        "main_metric": "Modeled operations, cycles, memory traffic, LUT accesses",
         "explanation": "Replaces LayerNorm-style multi-pass normalization with streaming RMSNorm and reciprocal-sqrt/LUT support.",
     },
     {
         "optimization": "Softmax LUT",
         "affected_sections": "Softmax",
-        "main_metric": "Elementwise cycles and special-function cost",
-        "explanation": "Replaces expensive exp operation with LUT lookup for quantized score differences.",
+        "main_metric": "Cycles, DRAM reduction, LUT accesses",
+        "explanation": "Replaces expensive FP32 exp/div softmax with row-wise LUT softmax. True MACs are not counted for Softmax.",
     },
     {
-        "optimization": "Operator Fusion",
+        "optimization": "Operator Fusion / page streaming",
         "affected_sections": "MLP, Output Projection",
-        "main_metric": "Intermediate read/write bytes",
-        "explanation": "FC1 + GELU + requant and output projection + residual reduce intermediate materialization.",
+        "main_metric": "Intermediate materialization and memory traffic",
+        "explanation": "Linear+GELU+requant and output projection+residual reduce FP32 intermediate materialization. Current RTL stores GELU pages through DDR instead of keeping full hidden_gelu on chip.",
     },
     {
         "optimization": "Ping-Pong Buffer",
-        "affected_sections": "QKV Projection, Output Projection, MLP",
+        "affected_sections": "QKV Projection, Attention Score, Output Projection, MLP",
         "main_metric": "Latency cycles",
-        "explanation": "Overlaps tile loading and computation. It may increase BRAM usage but reduces exposed load latency.",
+        "explanation": "Overlaps tile loading and computation when applicable. It may increase live buffer footprint but reduces exposed load latency.",
     },
     {
         "optimization": "DSP Data Packing",
         "affected_sections": "QKV Projection, Attention Score, Attention Value, Output Projection, MLP",
-        "main_metric": "Effective MACs/cycle",
-        "explanation": "Increases effective INT8 throughput. Mathematical MAC count is unchanged, but compute cycles decrease.",
+        "main_metric": "Effective MACs/cycle and compute cycles",
+        "explanation": "Increases effective INT8 throughput. Mathematical MAC count is unchanged; compute cycles decrease through a higher peak MAC/cycle.",
     },
 ]
 
 
-def _safe_ratio(base: float, opt: float) -> float: # 算 imporved ratio，如 DRAM 使用量減少幾倍
+def _safe_ratio(base: float, opt: float) -> float:
     if opt == 0:
         return float("inf") if base > 0 else 1.0
     return base / opt
 
 
-def build_optimization_impact(df: pd.DataFrame) -> pd.DataFrame: # 只拿特定section算improvement
+def build_optimization_impact(df: pd.DataFrame) -> pd.DataFrame:
     base = df[df["model"] == BASELINE].set_index("section")
     opt = df[df["model"] == OPTIMIZED].set_index("section")
     rows = []
@@ -68,18 +68,22 @@ def build_optimization_impact(df: pd.DataFrame) -> pd.DataFrame: # 只拿特定s
             continue
         b = base.loc[affected]
         o = opt.loc[affected]
+        b_ops = float(b["operations"].sum()) if "operations" in b.columns else 0.0
+        o_ops = float(o["operations"].sum()) if "operations" in o.columns else 0.0
         rows.append({
             **item,
             "sections_used": ", ".join(affected),
-            "dram_reduction_x": _safe_ratio(float(b["dram_total_bytes"].sum()), float(o["dram_total_bytes"].sum())), # DRAM traffic 減少幾倍
-            "bram_access_change_x_opt_over_base": _safe_ratio(float(o["bram_total_bytes"].sum()), float(b["bram_total_bytes"].sum())) if float(b["bram_total_bytes"].sum()) else float("inf"), # optimized 的 BRAM access 是 baseline 的幾倍
-            "cycle_speedup_x": _safe_ratio(float(b["cycles_total"].sum()), float(o["cycles_total"].sum())), # latency cycles 加速幾倍
-            "energy_reduction_x": _safe_ratio(float(b["energy_total_uj"].sum()), float(o["energy_total_uj"].sum())), # 代表 energy 減少幾倍
+            "mac_reduction_x": _safe_ratio(float(b["macs"].sum()), float(o["macs"].sum())),
+            "operation_reduction_x": _safe_ratio(b_ops, o_ops),
+            "dram_reduction_x": _safe_ratio(float(b["dram_total_bytes"].sum()), float(o["dram_total_bytes"].sum())),
+            "bram_access_change_x_opt_over_base": _safe_ratio(float(o["bram_total_bytes"].sum()), float(b["bram_total_bytes"].sum())) if float(b["bram_total_bytes"].sum()) else float("inf"),
+            "cycle_speedup_x": _safe_ratio(float(b["cycles_total"].sum()), float(o["cycles_total"].sum())),
+            "energy_reduction_x": _safe_ratio(float(b["energy_total_uj"].sum()), float(o["energy_total_uj"].sum())),
         })
     return pd.DataFrame(rows)
 
 
-def export_optimization_analysis(df: pd.DataFrame, output_dir: str | Path) -> pd.DataFrame: #　把optimization impact結果存成檔案和畫圖
+def export_optimization_analysis(df: pd.DataFrame, output_dir: str | Path) -> pd.DataFrame:
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     impact = build_optimization_impact(df)

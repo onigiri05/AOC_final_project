@@ -11,6 +11,7 @@
 ```
 ## PT_DIR/
 ==請將載下來的權重檔放在這個資料夾下==
+權重檔[連結](https://drive.google.com/file/d/1NLXP_AgiUWwAuHGhvn90UVlvVOJURX59/view?usp=sharing)
 ```
 AOC_final_project
 ├── PT_DIR

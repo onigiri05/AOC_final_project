@@ -1,5 +1,6 @@
 `timescale 1ns/1ps
-
+`include "Residual_Add_Unit.sv"
+`include "RMS_Stat_Accumulator.sv"
 // ============================================================
 // 檔名  : PPU_Residual_RMS_Tail.sv
 // 模組  : PPU_Residual_RMS_Tail

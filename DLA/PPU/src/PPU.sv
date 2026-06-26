@@ -1,4 +1,7 @@
 `include "ASIC.svh"
+`include "GELU_Unit.sv"
+`include "PPU_Residual_RMS_Tail.sv"
+`include "Requant_Unit.sv"
 
 module PPU #(
     parameter int TOKEN_NUM       = 197,

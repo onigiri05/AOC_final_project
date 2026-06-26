@@ -2,7 +2,7 @@ ROOT_DIR     := $(shell pwd)
 SYSTOLIC_DIR := $(ROOT_DIR)/Systolic
 SOFTMAX_DIR  := $(ROOT_DIR)/Softmax
 PPU_DIR  := $(ROOT_DIR)/PPU
-Streaming_RMSNorm_DIR  := $(ROOT_DIR)/Streaming_RMSNorm
+Streaming_RMSNorm_DIR  := $(ROOT_DIR)/Streaming_RMSNorm_Unit
 MODEL_DIR	:= $(ROOT_DIR)/DLA_model
 
 .PHONY: vcs wave clean model_eval

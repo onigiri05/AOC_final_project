@@ -1,425 +1,138 @@
-# PPU Residual + RMS Tile Units
-
-本資料夾包含三個 PPU 後半段模組，配合目前專題的 **16×16 systolic array tile dataflow**。
-
-檔案：
-
-```text
-Residual_Add_Unit.sv
-RMS_Stat_Accumulator.sv
-PPU_Residual_RMS_Tail.sv
-```
+---
+title: PPU Top-Level Module
 
 ---
 
-## 1. 整體資料流
+# PPU Top-Level Module 
 
-PPU tail 接在 `Requant_Unit` 後面。
+## 1. 模組概述 (Module Overview)
+`PPU` (Post-Processing Unit) 是 Vision Transformer (ViT-Small/16) 硬體加速晶片中的關鍵後處理單元。它緊接在脈動陣列 (Systolic Array) 之後，負責接收高精度的 32-bit 部分和 (Partial Sum / Psum)，並在硬體流水線中平行處理量化、非線性激活函數、殘差相加 (Residual Add) 以及層歸一化統計量 (RMSNorm Statistics) 的計算。
 
-```text
-Requant output uint8 tile
+本模組整合了四大核心運算子單元：
+- **GELU_Unit**: 1-cycle 延遲的非線性激活函數查表 ROM。
+- **Requant_Unit**: 高效率的 Power-of-two 算術右移與飽和截斷電路，將 INT32 轉回以 128 為零點的 uint8 格式。
+- **Residual_Add_Unit**: $16 \times 16$ Tile 規模的特徵圖殘差相加器。
+- **RMS_Stat_Accumulator**: 跨通道 (Channel-tile) 的平方和累加器，為後續的 RMSNorm 提供硬體統計量。
+```
+Systolic Array 輸出 INT32 Tile (16x16)
         ↓
-Residual_Add_Unit
+[Stage 1] GELU Unit (查表) & Bypass 邏輯
         ↓
-X_mid / X_out tile
+[Stage 1] Requant Unit (算術右移 + 飽和截斷至 uint8)
         ↓
-RMS_Stat_Accumulator
+[Stage 2] Residual Add Unit (+ 來自 SRAM 的 Residual Tile)
         ↓
-sum_sq[token]
+[Stage 2] RMS Stat Accumulator (計算 Σ(x-128)²)
+        ↓
+PPU 輸出 uint8 Tile (至 GLB) & 32-bit RMS 統計量 (至 Stat SRAM)
 ```
+---
 
-目前 tile 格式為：
+## 2. 硬體參數定義 (Parameters)
+模組支援高度參數化配置，預設配置完全對齊 ViT-Small/16 模型規模：
 
-```text
-16 tokens × 16 channels
-```
-
-也就是每次處理一個 `16×16` INT8 activation tile。
+| 參數名稱 | 預設值 | 資料型態 | 說明 |
+| :--- | :---: | :---: | :--- |
+| `TOKEN_NUM` | `197` | `int` | 輸入 Sequence 的總 Token 數 (14x14 patches + 1 class token) |
+| `CHANNEL_NUM` | `384` | `int` | 特徵圖通道維度 (Embedding Dimension $D$) |
+| `TOKEN_TILE` | `16` | `int` | 脈動陣列與 PPU 單次處理的 Token 區塊大小 (Row 規模) |
+| `CHANNEL_TILE` | `16` | `int` | 脈動陣列與 PPU 單次處理的 Channel 區塊大小 (Column 規模) |
+| `DATA_W` | `8` | `int` | 激活值與特徵圖的 INT8/uint8 位元寬度 |
+| `SUM_W` | `32` | `int` | RMS 統計累加器的位元寬度 |
+| `TOKEN_W` | `8` | `int` | Token 索引訊號的位元寬度 |
+| `CHANNEL_TILE_W` | `5` | `int` | Channel Tile 索引的位元寬度 (384/16 = 24 區塊，需 5-bit) |
+| `ZERO_POINT` | `8'd128` | `logic [7:0]` | 量化 uint8 的非零偏置起點 (Zero Point) |
 
 ---
 
-## 2. Residual_Add_Unit.sv
+## 3. 輸出入埠介紹 (I/O Ports)
 
-### 功能
+PPU 頂層模組內部埠依照功能可劃分為 **系統控制**、**輸入資料交握**、**輸出特徵圖交握** 以及 **統計量交握** 四大類：
 
-做 shortcut / residual add。
+### A. 系統與全域控制訊號 (System & Global Control)
+| 訊號名稱 | 方向 | 位元寬度 | 說明 |
+| :--- | :---: | :---: | :--- |
+| `clk` | Input | `1` | 全域同步時脈訊號 (100MHz) |
+| `rst` | Input | `1` | 高電位非同步/同步重置訊號 |
+| `ppu_mode_i` | Input | `2` | **PPU 工作模式選擇：**<br>• `2'b00`: Attention Output 階段 (啟用殘差與 RMS)<br>• `2'b01`: FFN FC1 階段 (啟用 GELU 激活函數，旁路殘差)<br>• `2'b10`: FFN FC2 階段 (旁路 GELU，啟用殘差與 RMS) |
+| `scaling_factor_i` | Input | `6` | 量化右移位數 $n$ (代表除以 $2^n$)，由 Control Path 暫存器配置 |
 
-使用在兩個地方：
+### B. 輸入端 Tile 資料與交握介面 (Input Tile & Handshake)
+| 訊號名稱 | 方向 | 位元寬度 | 說明 |
+| :--- | :---: | :---: | :--- |
+| `tile_valid_i` | Input | `1` | 輸入資料有效訊號 (來自 Systolic Array 或輸入 Buffer) |
+| `tile_ready_o` | Output | `1` | PPU 準備好接收新資料。當管線阻塞或 Pending Queue 滿時拉低 |
+| `psum_tile_i` | Input | `TOKEN_TILE * CHANNEL_TILE * 32` <br> (8192 bits) | 來自脈動陣列的 $16\times16$ INT32 部分和資料矩陣 |
+| `residual_tile_i` | Input | `TOKEN_TILE * CHANNEL_TILE * DATA_W` <br> (2048 bits) | 來自 Shortcut Buffer 的 uint8 殘差資料矩陣 |
+| `base_token_idx_i` | Input | `TOKEN_W` | 當前 Tile 內第 0 行對應的真實 Token 絕對索引值 |
+| `channel_tile_idx_i` | Input | `CHANNEL_TILE_W` | 當前處理的 Channel 區塊索引 (範圍 0~23) |
+| `token_valid_mask_i` | Input | `TOKEN_TILE` | Token 有效遮罩。處理邊界 Token (如 192~196) 時遮蔽無效 Row |
 
-```text
-Attention 後：
-X_mid = X + O
+### C. 輸出端特徵圖與交握介面 (Output Tile & Handshake)
+| 訊號名稱 | 方向 | 位元寬度 | 說明 |
+| :--- | :---: | :---: | :--- |
+| `data_tile_valid_o` | Output | `1` | PPU 輸出特徵圖有效訊號，送往 Global Buffer (GLB) |
+| `data_tile_ready_i` | Input | `1` | 後級 Buffer 準備接收訊號 (Backpressure 反向壓力來源) |
+| `data_tile_o` | Output | `TOKEN_TILE * CHANNEL_TILE * DATA_W` <br> (2048 bits) | 處理完成的 $16\times16$ uint8 (ZP=128) 輸出特徵圖矩陣 |
 
-FC2 後：
-X_out = X_mid + MLP_out
-```
-
-### 量化格式
-
-因為前面的 `Requant_Unit` 輸出是：
-
-```text
-uint8, zero point = 128
-```
-
-所以 residual add 公式為：
-
-```text
-q_out = clamp(q_main + q_residual - 128, 0, 255)
-```
-
-### 主要 I/O
-
-```verilog
-input  logic [16*16*8-1:0] main_tile_i;
-input  logic [16*16*8-1:0] residual_tile_i;
-output logic [16*16*8-1:0] data_tile_o;
-```
-
-說明：
-
-```text
-main_tile_i:
-    Requant 後的 main branch tile
-    可能是 Attention output O 或 FC2 output MLP_out
-
-residual_tile_i:
-    shortcut branch tile
-    Attention 後是 X
-    FC2 後是 X_mid
-
-data_tile_o:
-    residual add 後的結果
-    Attention 後是 X_mid
-    FC2 後是 X_out
-```
-
-這個 module 是 combinational，不含 valid / ready。
+### D. 統計量輸出與交握介面 (Statistic Output & Handshake)
+| 訊號名稱 | 方向 | 位元寬度 | 說明 |
+| :--- | :---: | :---: | :--- |
+| `stat_valid_o` | Output | `1` | RMSNorm 統計量有效訊號 (當看滿 24 個 Channel Tile 後拉高) |
+| `stat_ready_i` | Input | `1` | 後級 Token Stat SRAM 或 Inv-Sqrt 單元準備好接收訊號 |
+| `stat_token_idx_o` | Output | `TOKEN_W` | 當前輸出的統計量所屬的 Token 絕對索引值 |
+| `sum_sq_o` | Output | `SUM_W` | 該 Token 完整的 384 通道平方和結果 $\sum (x - 128)^2$ |
 
 ---
 
-## 3. RMS_Stat_Accumulator.sv
+## 4. 內部管線結構與資料流 (Pipeline & Dataflow)
 
-### 功能
+PPU 頂層模組將內部運算切分為兩大硬體流水線階段 (Pipeline Stages) 以優化時序：
+### Stage 1: Requantization & Non-linear Activation
 
-在產生 `X_mid` 或 `X_out` 時，同步累加 RMSNorm 下一階段需要的統計量：
-
-```text
-sum_sq[token] = Σ x[token, channel]^2
-```
-
-因為 activation 是 `uint8 zero point = 128`，所以實際累加：
-
-```text
-sum_sq[token] += Σ(q_out - 128)^2
-```
-
-### 為什麼需要 partial_sum_mem？
-
-目前資料流是：
-
-```text
-Token tile = 16 tokens
-Output channel tile = 16 channels
-D = 384 channels
-```
-
-所以一個 token 的 384 channels 會被切成：
-
-```text
-384 / 16 = 24 個 channel tiles
-```
-
-因此 `RMS_Stat_Accumulator` 會用：
-
-```text
-partial_sum_mem[token]
-```
-
-跨 24 個 channel tiles 累加。
-
-當 `channel_tile_idx_i == 23` 時，代表該 token 的 384 channels 都累加完成，輸出完整 `sum_sq`。
-
-### 主要 I/O
-
-```verilog
-input  logic                 tile_valid_i;
-output logic                 tile_ready_o;
-
-input  logic                 acc_en_i;
-input  logic [16*16*8-1:0]   data_tile_i;
-input  logic [7:0]           base_token_idx_i;
-input  logic [4:0]           channel_tile_idx_i;
-input  logic [15:0]          token_valid_mask_i;
-
-output logic                 stat_valid_o;
-input  logic                 stat_ready_i;
-output logic [7:0]           stat_token_idx_o;
-output logic [31:0]          sum_sq_o;
-```
-
-說明：
-
-```text
-tile_valid_i:
-    上游送來的 16×16 tile 有效
-
-tile_ready_o:
-    本 module 可以接收 tile
-
-acc_en_i:
-    是否啟用 RMS statistic 累加
-    Attention 後與 FC2 後啟用
-    FC1 後關閉
-
-data_tile_i:
-    X_mid 或 X_out 的 16×16 tile
-
-base_token_idx_i:
-    目前 tile 的第一個 token index
-    例如 m_tile = 0 時是 0
-    m_tile = 1 時是 16
-
-channel_tile_idx_i:
-    目前是第幾個 channel tile
-    範圍 0~23
-
-token_valid_mask_i:
-    16 個 token row 哪些有效
-    最後一個 token tile 可能有 padding，因此需要 mask
-
-stat_valid_o:
-    sum_sq_o 有效
-
-stat_ready_i:
-    下游 Token Stat SRAM / LUT 接收端 ready
-
-stat_token_idx_o:
-    目前輸出的 token index
-
-sum_sq_o:
-    該 token 的完整 Σ(q-128)^2
-```
+- 輸入的 `psum_tile_i` 會同時進入 `GELU_Unit` 的輸入埠與一組內部的**旁路暫存器陣列** (`stg1_psum_bypass`)。
+- `GELU_Unit` 內含多組 256x8-bit ROM，會花費 **1 個時脈週期** 完成查表。
+- 在下一個時脈週期，透過多路選擇器 (Mux) 判斷：
+  - 若 `ppu_mode_i == 2'b01` (FC1 階段)，資料流選擇 `lane_gelu_out`。
+  - 其他工作模式，則旁路選擇 `stg1_psum_bypass`。
+- 資料隨後進入純組合邏輯的 `Requant_Unit` 進行算術右移 (`>>> scaling_factor`)、溢位偵測及飽和截斷，轉換成 **uint8**。
 
 ---
 
-## 4. PPU_Residual_RMS_Tail.sv
+### Stage 2 & 3: Tail Processing & Statistics Accumulation
 
-### 功能
+經過量化後的 16×16 uint8 資料矩陣進入 `PPU_Residual_RMS_Tail` 封裝模組。
 
-整合：
+- **Residual Add (殘差相加)**: 呼叫 `Residual_Add_Unit`，依據以下公式執行非對稱量化空間下的殘差加法：
+  $q_{out} = \text{clamp}(q_{main} + q_{res} - 128, 0, 255)$ 
+  *(註：若在 FC1 模式則直接旁路不處理。)*
+- **RMS Accumulator (統計量累加)**: 將資料送入 `RMS_Stat_Accumulator`。由於 ViT-Small 的通道數為 384 (即 24×16)，累加器內部包含記憶體陣列，會暫存非連續週期進來的同個 Token 中途累加值。當最後一個區塊 (`channel_tile_idx_i == 23`) 運算完成時，完整的 32-bit 平方和會被推入 Pending Queue，並透過 `stat_valid_o` 逐筆同步送出。
 
-```text
-Residual_Add_Unit
-RMS_Stat_Accumulator
-```
-
-根據 `ppu_mode_i` 決定資料路徑。
-
-### Mode 說明
 
 ```text
-ppu_mode_i = 2'b00：Attention output
-    main_tile_i     = Attention output O
-    residual_tile_i = X
-    output          = X_mid = X + O
-    啟用 RMS stat
-
-ppu_mode_i = 2'b01：FC1 output
-    main_tile_i     = GELU + Requant 後的 FC1 output
-    residual_tile_i = don't care
-    output          = main_tile_i
-    不做 residual add
-    不啟用 RMS stat
-
-ppu_mode_i = 2'b10：FC2 output
-    main_tile_i     = MLP_out
-    residual_tile_i = X_mid
-    output          = X_out = X_mid + MLP_out
-    啟用 RMS stat
-```
-
-### 主要 I/O
-
-```verilog
-input  logic                 clk;
-input  logic                 rst_n;
-
-input  logic [1:0]           ppu_mode_i;
-
-input  logic                 tile_valid_i;
-output logic                 tile_ready_o;
-
-input  logic [16*16*8-1:0]   main_tile_i;
-input  logic [16*16*8-1:0]   residual_tile_i;
-
-input  logic [7:0]           base_token_idx_i;
-input  logic [4:0]           channel_tile_idx_i;
-input  logic [15:0]          token_valid_mask_i;
-
-output logic                 data_tile_valid_o;
-input  logic                 data_tile_ready_i;
-output logic [16*16*8-1:0]   data_tile_o;
-
-output logic                 stat_valid_o;
-input  logic                 stat_ready_i;
-output logic [7:0]           stat_token_idx_o;
-output logic [31:0]          sum_sq_o;
-```
-
----
-
-## 5. 符合目前 project dataflow 的原因
-
-目前 systolic array 每次輸出：
-
-```text
-16 tokens × 16 output channels
-```
-
-而 PPU tail 也是吃：
-
-```text
-16×16 INT8 tile
-```
-
-所以可以直接接在 systolic array + requant 後面。
-
-在 FC2 dataflow 中，PPU 階段會吃：
-
-```text
-PPU_out[16][16]
-res[16][16]
-```
-
-然後寫回：
-
-```text
-BRAM_ACT_OUT[m tile][n tile]
-```
-
-這正好對應：
-
-```text
-main_tile_i     = PPU_out / Requant output
-residual_tile_i = res
-data_tile_o     = X_mid 或 X_out
-```
-
----
-
-## 6. 驗證方式
-
-目前使用 SystemVerilog testbench 驗證三個 module。
-
-測試檔：
-
-```text
-tb_Residual_Add_Unit.sv
-tb_RMS_Stat_Accumulator.sv
-tb_PPU_Residual_RMS_Tail.sv
-```
-
-golden data 在 testbench 裡直接用相同數學公式產生，不需要額外 Python 檔。
-
-### Residual_Add_Unit 驗證
-
-檢查公式：
-
-```text
-q_out = clamp(q_main + q_residual - 128, 0, 255)
-```
-
-包含：
-
-```text
-正常加法
-上溢 clamp 到 255
-下溢 clamp 到 0
-zero point = 128 的 case
-```
-
-### RMS_Stat_Accumulator 驗證
-
-檢查：
-
-```text
-partial_sum_mem[token] 跨 24 個 channel tiles 累加
-channel_tile_idx_i == 23 時輸出完整 sum_sq
-token_valid_mask_i 可以處理最後 padding token
-acc_en_i = 0 時不累加
-stat_ready_i = 0 時會 stall
-```
-
-### PPU_Residual_RMS_Tail 驗證
-
-檢查三種 mode：
-
-```text
-00 Attention：
-    做 residual add
-    啟用 RMS stat
-
-01 FC1：
-    bypass main_tile
-    不做 residual add
-    不啟用 RMS stat
-
-10 FC2：
-    做 residual add
-    啟用 RMS stat
-```
-
----
-
-## 7. 執行指令
-
-一次測三個 module：
-
-```bash
-make vcs
-```
-
-分開測：
-
-```bash
-make test_residual
-make test_rms
-make test_tail
-```
-
-清除模擬檔案：
-
-```bash
-make clean
-```
-
-通過時會看到類似：
-
-```text
-TEST PASSED: Residual_Add_Unit
-TEST PASSED: RMS_Stat_Accumulator
-TEST PASSED: PPU_Residual_RMS_Tail
-```
-
----
-
-## 8. 注意事項
-
-`sum_sq_o` 是 32-bit raw statistic。
-
-如果之後 Token Stat SRAM 只想存 8-bit，不能直接截斷 `sum_sq_o`，應該再接：
-
-```text
-inv-sqrt LUT
-或
-sum_sq quantization / compression unit
-```
-
-目前這三個 module 只負責：
-
-```text
-Residual Add
-產生 X_mid / X_out
-累加 RMSNorm 需要的 Σx²
-```
+                    +----------------------------------------+
+                    |           PPU Pipeline Top             |
+                    +----------------------------------------+
+                                        |
+     [Stage 1: Requant & GELU]          v
+                                  +------------+
+                     Psum_i ----> | GELU Unit  | ----+
+                                  +------------+     |
+                                        |            v
+                                        |     [ppu_mode_i == 2'b01]
+                                        +---->  / Mux
+                                               /  \
+                                               +--+
+                                                  |
+                                                  v
+                                          +--------------+
+                                          | Requant Unit |
+                                          +--------------+
+                                                  |
+     [Stage 2: Tail & Accumulator]                v  (stg1_main_tile)
+                                  +------------------------------+
+                  Residual_i ---->|    PPU_Residual_RMS_Tail     |
+                                  +------------------------------+
+                                    |                          |
+                                    v (Handshake)              v (Handshake)
+                               [data_tile_o]              [sum_sq_o]

@@ -1,6 +1,8 @@
 DLA README
 ===
 >[!Note] Brief
+>這個資料夾包含PPU, Softmax, Streaming_RMSNorm_Unit, Systolic 四個RTL module的實作及unit test, 及用python實作的`DLA演算法模型`DLA_model.py, 對應的是我們預期DLA硬體要執行的演算法。
+>
 >DLA底下共包含 5 個資料夾及一個Makefile, 一個README
 >```
 >DLA/.

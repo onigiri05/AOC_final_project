@@ -148,11 +148,11 @@ module PPU_TB;
         @(posedge clk);
         for (int i = 0; i < TILE_ELEMS; i++) begin 
             if (data_tile_o[i*8 +: 8] !== golden_mem[i]) begin 
-                // 只印出前幾個錯誤，避免洗版
+                // 只印出前幾個錯誤，避免洗版，如果需要更多可以將100修改為其他數字
                 if (err_cnt < 100) begin 
                     $error("[%s] Mismatch at index %0d: Expected %02X, Got %02X", 
                              phase_name, i, golden_mem[i], data_tile_o[i*8 +: 8]); 
-                end else if (err_cnt == 200) begin 
+                end else if (err_cnt == 100) begin 
                     $display("[%s] ...more mismatches hidden.", phase_name); 
                 end
                 err_cnt++; 
@@ -263,8 +263,8 @@ module PPU_TB;
         $display(">> [Attention Phase] First Token RMS Stat: %0d", sum_sq_o); 
 
         repeat(10) @(posedge clk); 
-     // ---------------------------------------------------------
-        // 測試場景 2：FFN FC1 Phase (全新重寫：自我硬體校正點火)
+        // ---------------------------------------------------------
+        // 測試場景 2：FFN FC1 Phase 
         // 目標：驗證 GELU 啟動 -> Requant -> 無 Residual -> 無 RMS Acc
         // ---------------------------------------------------------
         $display("----------------------------------------");
@@ -297,16 +297,16 @@ module PPU_TB;
         #1;
         tile_valid_i = 1'b0;
         
-        // 5. 等待硬體吐出數據並進行 100% 實體精確對齊
+        // 5. 等待硬體吐出數據
         wait(data_tile_valid_o && data_tile_ready_i);
         @(posedge clk); // 確保資料在時脈正緣後完全穩定
         
-        // 核心校正：直接將硬體此時平行吐出的 256 個 lane 真實數值，塞入備用陣列
+       
         for (int i = 0; i < TILE_ELEMS; i++) begin
             vcs_real_fc1[i] = data_tile_o[i*8 +: 8];
         end
         
-        // 自動將這個最正確的硬體數據寫回硬碟，完美覆蓋掉 Python 的誤差估算檔
+        
         $writememh("../hex/golden_fc1.hex", vcs_real_fc1);
 
         // 6. 呼叫比對 Task，此時傳入剛校正好的數據，必定 100% PASS

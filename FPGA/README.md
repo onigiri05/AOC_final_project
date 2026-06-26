@@ -518,20 +518,459 @@ ALL PASS
 
 # 3. Full Design
 
-> [!NOTE]
-> **TBD**
+本章節介紹 ViT full design 在 FPGA 上的整合與驗證方式。  
+Full design 的目標不是單獨驗證某一個 module，而是將 Patch Embedding、Transformer block、Systolic Array、PPU、RMSNorm、Softmax、AXI-Lite control、AXI master DDR 搬移整合成一個可以在 PYNQ-Z2 上執行的 one-block ViT accelerator。
 
-Full design 目前尚未補上完整說明。
+目前 GitHub 中與 Full Design 相關的資料夾分成兩個部分：
 
-之後此章節預計補充：
+```text
+FPGA/
+├── VIT_fulldesign_fpga/      # 放到 PYNQ / Jupyter Notebook 上執行的 FPGA package
+└── vit_fulldesign_rtl/       # Full design RTL source code
+```
 
-- Full ViT Accelerator 架構
-- Dataflow
-- Layer Scheduler
-- DMA / Memory Map
-- Systolic Array 與 PPU / RMSNorm / Softmax 的整合方式
-- Full design Python control flow
-- Full design FPGA validation result
+---
 
+## 3.1 Folder Structure
+
+### FPGA/VIT_fulldesign_fpga/
+
+此資料夾是實際放到 PYNQ board 上執行的 package，包含 bitstream、hwh、notebook、測資與 Vivado reports。
+
+```text
+FPGA/VIT_fulldesign_fpga/
+├── golden_gen
+├── reports
+├── vit.ipynb
+├── vit_fulldesign.bit
+└── vit_fulldesign.hwh
+```
+
+| 檔案 / 資料夾 | 說明 |
+| --- | --- |
+| `vit.ipynb` | PYNQ Jupyter Notebook，負責 load bitstream、配置 DDR buffer、控制 FPGA IP、讀回 counter 與 output。 |
+| `vit_fulldesign.bit` | Vivado 產生的 FPGA bitstream。 |
+| `vit_fulldesign.hwh` | PYNQ 用來解析 IP name、register map、address map 的 hardware handoff file。 |
+| `golden_gen/` | 產生與保存 one-block real-model 測資與 golden output。 |
+| `reports/` | Vivado implementation 產生的 timing、utilization、power report。 |
+
+---
+
+### FPGA/vit_fulldesign_rtl/
+
+此資料夾保存 full design 的 RTL source code。
+
+```text
+FPGA/vit_fulldesign_rtl/
+├── PPU
+├── PPU_RMSNorm_Fusion
+├── Streaming_RMSNorm_Unit
+├── scripts
+├── softmax_FPGA_package/softmax_FPGA_package
+├── systolic_array/src
+├── Global_Controller_FSM.sv
+├── Patch_Embedding_Systolic_Top.sv
+├── ViT_Accelerator_Top.sv
+├── ViT_DDR_AxiLite_Wrapper.sv
+├── ViT_Image_Accelerator_Top.sv
+├── ViT_InputLoadFSM.sv
+├── ViT_System_Core.sv
+└── exp_lut_10bit_Q1_15_range12.hex
+```
+
+| 檔案 / 資料夾 | 功能 |
+| --- | --- |
+| `ViT_DDR_AxiLite_Wrapper.sv` | Full design 最外層 wrapper，提供 AXI-Lite control register 與 AXI master DDR load/store。 |
+| `ViT_Image_Accelerator_Top.sv` | Image-level top，整合 image input、patch embedding 與 transformer block。 |
+| `ViT_System_Core.sv` | 系統核心，負責串接 input loader、patch embedding、ViT accelerator 與 DDR/page request。 |
+| `ViT_Accelerator_Top.sv` | Transformer block datapath，包含 RMSNorm、QKV、Attention、MLP、Residual Add 等 phase。 |
+| `Patch_Embedding_Systolic_Top.sv` | 使用 systolic array 執行 patch embedding。 |
+| `Global_Controller_FSM.sv` | 控制 accelerator phase / stage 的全域 FSM。 |
+| `ViT_InputLoadFSM.sv` | 將 DDR 或 host 載入的資料寫進指定 on-chip buffer。 |
+| `systolic_array/src` | Systolic Array 相關 RTL。 |
+| `PPU` | Requant、GELU、Residual Add 等 post-processing module。 |
+| `PPU_RMSNorm_Fusion` | RMS statistic、Gamma buffer、Token stat buffer 等 RMSNorm / PPU fusion 相關 RTL。 |
+| `Streaming_RMSNorm_Unit` | Streaming RMSNorm unit 與 RowPacker。 |
+| `softmax_FPGA_package/softmax_FPGA_package` | Softmax RTL、exponential LUT、testbench package。 |
+| `scripts` | Vivado packaging / report script。 |
+| `exp_lut_10bit_Q1_15_range12.hex` | Softmax exponential LUT。 |
+
+---
+
+## 3.2 Full ViT Accelerator 架構
+
+Full design 採用一個 shared systolic array 作為主要 matrix multiplication engine。  
+Patch Embedding、QKV Projection、QK^T、A × V、Output Projection、FC1、FC2 都共用同一個 systolic array，而不是為每個 operation 各自建立一份 PE array。
+
+整體架構可以分成五個部分：
+
+```text
+PS / Python Notebook
+        ↓ AXI-Lite control
+ViT_DDR_AxiLite_Wrapper
+        ↓
+ViT_System_Core
+        ↓
+Patch Embedding + Transformer Block
+        ↓
+AXI master DDR load/store
+        ↓
+DDR memory
+```
+
+主要硬體模組：
+
+```text
+ViT_DDR_AxiLite_Wrapper
+    ├── AXI-Lite register interface
+    ├── AXI master DDR loader / storer
+    └── performance counters
+
+ViT_System_Core
+    ├── InputLoadFSM
+    ├── Patch_Embedding_Systolic_Top
+    └── ViT_Accelerator_Top
+
+ViT_Accelerator_Top
+    ├── RMSNorm1 / RMSNorm2
+    ├── QKV Projection
+    ├── QK^T + Softmax + A×V
+    ├── Output Projection
+    ├── Residual Add
+    ├── FC1 + GELU
+    └── FC2
+```
+
+由於 PYNQ-Z2 的 FPGA resource 有限，full design 沒有把完整 12-layer ViT 全部展開成硬體，而是先實作 one-block accelerator，並用 Python 控制測試 one block 的 correctness 與 performance。
+
+---
+
+## 3.3 Dataflow
+
+Full design 的 dataflow 如下：
+
+```text
+Input image / position / cls token
+        ↓
+Patch Embedding
+        ↓
+X buffer
+        ↓
+RMSNorm1
+        ↓
+QKV Projection
+        ↓
+QK^T
+        ↓
+Softmax
+        ↓
+A × V
+        ↓
+Output Projection
+        ↓
+Residual Add 1 / X_mid
+        ↓
+RMSNorm2
+        ↓
+FC1 + GELU
+        ↓
+FC2
+        ↓
+Residual Add 2 / X_out
+        ↓
+DDR store output
+        ↓
+Python compare with golden
+```
+
+設計目標是盡量讓中間 activation 保留在 on-chip BRAM 中，避免每一層都回 DDR。  
+例如：
+
+- `X` 保存在 activation buffer 中，給 RMSNorm1 和 residual add 使用。
+- `Score` 和 `A` 共用同一塊 intermediate BRAM。
+- `V` 和 `X_mid` 因為 lifetime 不重疊，所以可以共用 buffer。
+- `GELU_out` 因為資料量太大，改成 page cache + DDR streaming。
+
+這樣可以減少 DRAM access，但同時因為 PYNQ-Z2 BRAM 有限，所以部分資料仍需要透過 DDR page 方式暫存。
+
+---
+
+## 3.4 Layer Scheduler
+
+Full design 內部由 FSM 控制不同 computation phase。  
+目前 one-block 的主要 phase 可以整理成：
+
+```text
+Patch Embedding
+RMSNorm1
+QKV / QK^T / Softmax / A×V
+Output Projection
+Residual Add 1 / X_mid
+RMSNorm2
+FC1 + GELU
+FC2
+Residual Add 2 / X_out
+```
+
+Scheduler 的工作包含：
+
+1. 決定目前要執行哪一個 phase。
+2. 發出 systolic array 的 enable / tile setting。
+3. 決定 activation、weight、bias、residual 要從哪個 buffer 讀。
+4. 決定 PPU mode，例如 requant、GELU、residual add。
+5. 控制 RMSNorm 的 input stream、gamma address、token statistic address。
+6. 控制 Softmax 讀取 score row 並寫回 attention probability。
+7. 在需要外部資料時，向 Python / DDR wrapper 發出 tile request 或 page request。
+8. 在每個 stage 完成時更新 status / counter，供 Python debug 或 profiling 使用。
+
+目前硬體 scheduler 是針對 one transformer block 設計。  
+完整 12 blocks 若要執行，可以由 Python replay 同一顆 one-block accelerator 多次，但 RTL 內部目前不是完整 12-layer automatic scheduler。
+
+---
+
+## 3.5 DMA / Memory Map
+
+Full design 不再只靠 Python 透過 AXI-Lite 一筆一筆寫 BRAM，而是加入 AXI master，讓 RTL 可以主動從 DDR 搬資料。
+
+資料搬移方式：
+
+```text
+Python allocate DDR buffer
+        ↓
+Python 將 hex 測資放入 DDR buffer
+        ↓
+RTL AXI master 從 DDR load 到 on-chip BRAM / page buffer
+        ↓
+Accelerator compute
+        ↓
+RTL AXI master 將 output store 回 DDR
+        ↓
+Python read back output buffer
+```
+
+### AXI-Lite Control
+
+AXI-Lite register 用來做控制與 debug，例如：
+
+```text
+start / status
+run mode
+input target
+input count
+DDR source address
+DDR destination address
+DDR word count
+page request
+tile request
+performance counter
+debug status
+```
+
+Python notebook 透過 `.hwh` 找到 `ViT_DDR_AxiLite_Wrap_0` IP，並使用 MMIO 讀寫這些 register。
+
+### DDR / BRAM Target
+
+Full design 中常見的資料 target 包含：
+
+```text
+image input
+position embedding
+cls token
+gamma
+patch weight
+patch bias
+transformer weight
+transformer bias
+GELU page buffer
+X / X_out buffer
+```
+
+其中 weight、bias、image、position 等資料會先由 Python 放到 DDR buffer，再由 RTL AXI master load 到對應 on-chip buffer。
+
+---
+
+## 3.6 Systolic Array 與 PPU / RMSNorm / Softmax 的整合方式
+
+### Systolic Array
+
+Systolic Array 是主要 GEMM engine，用於：
+
+```text
+Patch Embedding
+QKV Projection
+QK^T
+A × V
+Output Projection
+FC1
+FC2
+```
+
+早期設計曾使用 16×16 systolic，但 PYNQ-Z2 上 DSP、LUT、routing 壓力太大，因此 full design 後來改為較小的 shared systolic 架構。  
+這會增加 cycle 數，但可以讓設計通過 implementation。
+
+### PPU
+
+PPU 負責 systolic output 後處理，例如：
+
+```text
+Requant
+GELU
+Residual Add
+RMS statistic accumulation
+```
+
+為了減少 LUT 與 routing 壓力，PPU 不再一次處理完整 tile，而是偏向 streaming valid/ready 方式逐筆處理。
+
+### RMSNorm
+
+RMSNorm 使用 streaming dataflow：
+
+```text
+X / X_mid buffer
+        ↓
+Streaming RMSNorm
+        ↓
+normalized activation buffer
+```
+
+RMSNorm 會讀取：
+
+```text
+Token Stat SRAM: inv_rms[t]
+Gamma Buffer: gamma[c]
+```
+
+並以 token-major 順序輸出 normalized activation。
+
+### Softmax
+
+Softmax 使用 `exp_lut_10bit_Q1_15_range12.hex` 作為 exponential LUT。
+
+Attention flow：
+
+```text
+QK^T output score
+        ↓
+Softmax
+        ↓
+attention probability A
+        ↓
+A × V
+```
+
+Score 和 attention probability 共用 intermediate buffer，Softmax 後會把 score 覆寫成 A，以節省 BRAM。
+
+---
+
+## 3.7 Full Design Python Control Flow
+
+`vit.ipynb` 是 full design 的主要 FPGA 控制程式。
+
+執行流程：
+
+```text
+1. Load vit_fulldesign.bit
+2. 透過 vit_fulldesign.hwh 找到 ViT_DDR_AxiLite_Wrap_0
+3. 建立 MMIO object
+4. 讀取 golden_gen/hex/case_vit_real_model 測資
+5. 使用 PYNQ allocate 建立 DDR buffer
+6. 將 image / pos / cls / gamma / weight / bias 放入 DDR
+7. 設定 AXI-Lite control registers
+8. 啟動 accelerator
+9. Python 持續服務 RTL 發出的 tile request / page request
+10. RTL 透過 AXI master load/store DDR data
+11. 等待 one-block 完成
+12. store X_out 到 DDR
+13. Python read back X_out
+14. 和 software golden 比對
+15. 讀取 performance counters
+```
+
+Notebook 也會印出 progress，例如目前 phase、tile request、DDR 狀態、counter 數值等，方便觀察硬體是否卡在某個 stage。
+
+---
+
+## 3.8 Full Design FPGA Validation Result
+
+Full design 的驗證包含兩個層面：
+
+### Correctness validation
+
+使用 `golden_gen/hex/case_vit_real_model` 中的 real-model 測資，將 FPGA output 與 software golden 比對。
+
+主要 golden 檔案：
+
+```text
+x_out.hex
+x_out.npy
+stage_golden_block0.npz
+```
+
+其中：
+
+- `x_out.hex` / `x_out.npy` 用來比對 one-block 最終 output。
+- `stage_golden_block0.npz` 可用於 stage-level debug。
+- `x_after_patch.npy`、`x_mid.npy` 可用於中間結果檢查。
+
+### Performance validation
+
+Full design RTL 中加入 performance counters。  
+Python notebook 會讀取並整理：
+
+```text
+total cycles
+compute busy cycles
+DDR load cycles
+DDR store cycles
+DDR read / write words
+BRAM read / write words
+BRAM active cycles
+MAC count
+DDR transaction count
+GELU page wait cycles
+GELU page overlap cycles
+```
+
+這些 counter 可用來計算：
+
+```text
+BRAM bandwidth
+DRAM access time
+MAC/cycle
+DDR bytes / transaction
+ping-pong overlap ratio
+energy estimate
+```
+
+### Vivado implementation reports
+
+`reports/` 中保存 implementation 後的 report：
+
+```text
+reports/
+├── power_impl_vectorless.rpt
+├── timing_impl_vectorless.rpt
+└── utilization_impl_hier.rpt
+```
+
+其中：
+
+- `utilization_impl_hier.rpt`：查看 LUT / FF / BRAM / DSP 使用量。
+- `timing_impl_vectorless.rpt`：確認 timing 是否 meet。
+- `power_impl_vectorless.rpt`：估算 on-chip power。
+
+目前 full design 已能完成 Vivado implementation，並可產生 timing、utilization、power report。  
+FPGA notebook 也可以讀取 performance counters，用於和理論 profiling 比較。
+
+---
+
+## 3.9 注意事項
+
+1. `vit.ipynb`、`vit_fulldesign.bit`、`vit_fulldesign.hwh` 必須放在同一層資料夾。
+2. `golden_gen/hex/case_vit_real_model` 必須存在，否則 notebook 找不到測資。
+3. `.bit` 和 `.hwh` 必須來自同一次 Vivado build，否則 PYNQ 可能找不到正確 IP 或 address map。
+4. 若修改 RTL，必須重新 package IP、generate bitstream，並更新 `.bit` / `.hwh`。
+5. 若 AXI master 沒有正確接到 PS DDR，notebook 會在 DDR load/store 階段 timeout。
+6. 目前 full design 主要驗證 one-block accelerator，不是完整 12-block all-hardware scheduler。
 ---
 

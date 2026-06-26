@@ -159,6 +159,161 @@ OPTION FLAGs:
 ----------------------------------------------------------------------------------------------
 
 # Streaming_RMSNorm_Unit/
+```text
+.
+├── Makefile                               # standalone RMSNorm VCS simulation Makefile
+├── Readme.md                              # 團隊內交接使用的 README
+├── src
+│   ├── Streaming_RMSNorm_Unit.sv          # RMSNorm core + stream controller
+│   └── Streaming_RMSNorm_RowPacker.sv     # 將 RMSNorm output pack 成 32-bit BRAM word
+├── tb
+│   └── tb_Streaming_RMSNorm_Unit.sv       # full-shape standalone testbench
+└── hardware_export
+    ├── hardware_export_manifest.json
+    ├── rmsnorm_vectors
+    │   └── synthetic_full_shape_197x384
+    │       ├── vector_config.json
+    │       ├── x_input.mem                # signed INT8 input activation
+    │       ├── inv_rms.mem                # per-token inv_rms
+    │       ├── gamma.mem                  # per-channel gamma
+    │       └── golden.mem                 # signed INT8 software golden output
+    ├── gamma_buffer                       # ViT block/layer gamma export
+    └── rmsnorm_inv_sqrt_lut               # inv-sqrt LUT export
+```
+
+### Module Behavior
+
+`Streaming_RMSNorm_Unit` 將輸入的 activation stream 做 RMSNorm，並輸出 signed INT8 normalized activation。
+
+目前 standalone unit test 使用 signed INT8 input / signed INT8 output。
+
+```text
+TOKEN_NUM   = 197
+CHANNEL_NUM = 384
+TOTAL_ELEMS = 197 × 384 = 75648
+
+x_in        = signed INT8
+inv_rms     = unsigned 16-bit fixed-point, FRAC=14
+gamma       = signed 16-bit fixed-point, FRAC=14
+y_out       = signed INT8
+```
+
+RMSNorm core 的運算為：
+
+```text
+y[t,c] = clamp_int8((x[t,c] × inv_rms[t] × gamma[c]) >>> (2 × FRAC + OUT_SHIFT))
+```
+
+內部 pipeline：
+
+```text
+Stage 1: x × inv_rms
+Stage 2: stage1 × gamma
+Stage 3: shift + clamp to signed INT8
+```
+
+只有 `x_valid && x_ready` 成立時會接收一筆 input；只有 `y_valid && y_ready` 成立時會輸出一筆有效 output。
+
+`Streaming_RMSNorm_RowPacker` 會將 RMSNorm output pack 成 32-bit BRAM word：
+
+```text
+4 筆 signed INT8 y_out -> 1 筆 act_wr_data_o[31:0]
+```
+
+RowPacker 有 `SIGNED_TO_ZP128` 參數：
+
+```text
+SIGNED_TO_ZP128 = 1: signed INT8 轉成 uint8 zero-point 128 後 pack
+SIGNED_TO_ZP128 = 0: 保留 signed INT8 bit pattern 直接 pack
+```
+
+### Testbench Explanation
+
+`tb_Streaming_RMSNorm_Unit.sv` 是 full-shape standalone testbench，會讀入完整 197 tokens × 384 channels 的測資。
+
+Testbench 預設讀取：
+
+```text
+../hardware_export/rmsnorm_vectors/synthetic_full_shape_197x384
+```
+
+需要的檔案：
+
+```text
+x_input.mem
+inv_rms.mem
+gamma.mem
+golden.mem
+```
+
+測試流程：
+
+```text
+讀入 x_input / inv_rms / gamma / golden
+啟動 Streaming_RMSNorm_Unit
+以 token-major 順序送入 75648 筆 signed INT8 activation
+逐筆比對 y_out 與 golden.mem
+檢查 y_last 是否只在最後一筆 output assert
+```
+
+執行方式：
+
+```bash
+make vcs RMS=1
+```
+
+若需要 waveform：
+
+```bash
+make vcs RMS=1 DUMP=1
+```
+
+### Test cases
+
+Full-shape RMSNorm test.
+
+測試範圍：
+
+```text
+197 tokens
+384 channels per token
+75648 output elements
+```
+
+此 testbench 會比較：
+
+```text
+每一筆 signed INT8 RMSNorm output
+y_last 位置
+valid / ready handshake 下 output 數量
+```
+
+### Pass / Fail Terminal Output
+
+成功時會看到類似：
+
+```text
+TOKEN_NUM   = 197
+CHANNEL_NUM = 384
+TOTAL_ELEMS = 75648
+========================================
+[INFO] All .mem files loaded successfully.
+[INFO] x_mem[0]      = 1
+[INFO] inv_rms[0]    = 0x34e5
+[INFO] gamma[0]      = 13235 / 0x33b3
+[INFO] golden_mem[0] = 0
+[INFO] Checked 0 / 75648 outputs
+[INFO] Checked 4096 / 75648 outputs
+...
+[INFO] Checked 73728 / 75648 outputs
+[INFO] Input driver finished. Sent 75648 elements.
+[INFO] Output checker finished. Checked 75648 elements.
+========================================
+Streaming RMSNorm Unit TEST PASSED
+Checked elements = 75648
+========================================
+```
+若 golden data 與 RTL 不一致，testbench 會顯示 token、channel、index、expected value、actual value、x input、inv_rms 與 gamma。
 
 ----------------------------------------------------------------------------------------------
 # Systolic/

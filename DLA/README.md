@@ -15,6 +15,7 @@ DLA README
 >
 > - Makefile
 >   > 執行PPU, Softmax, Streaming_RMSNorm_Unit, Systolic 四個 Sub-module 的 Unittest (Simulation)
+>   > 執行DLA_model eval, 評估硬體推論的準確度
 > - PPU/
 >   > abcd
 > - Softmax/
@@ -27,12 +28,8 @@ DLA README
 >   > 包含RTL code和對應的測資
 > - DLA_model/
 >   > **不是RTL**
+>   >
 >   > 用python實作的`DLA演算法模型`, 對應的是我們預期DLA硬體要執行的演算法。
->   > 這邊主要用途是比對`DLA演算法`與`Pytorch model (.pt)`執行推論的結果差異,
->   > 藉此評估硬體推論的準確度。
->   > 
->   > 在FPGA驗證時, 相同的演算法模型也用來產生DLA的golden,
->   > i.e. DLA硬體實際推論的結果會與這邊的DLA演算法模型完全一致
 
 [TOC]
 # Makefile
@@ -44,7 +41,8 @@ Usage: make [target] [OPTION FLAGs]
 Run targets
     vcs                 - Run vcs simulation
     wave                - 開nWave
-    clean               - 刪除所有simulation, wave..產生的衍生檔案
+    model_eval          - 比較DLA_model 與 .pt的輸出結果
+    clean               - 刪除所有simulation, wave, python script...產生的衍生檔案
 
 OPTION FLAGs:
     vcs target:
@@ -72,6 +70,18 @@ OPTION FLAGs:
         module option:
             SYSTOLIC=1          - 在Systolic array波形路徑下開nWave
             SOFTMAX=1           - 在Softmax dump波形路徑下開nWave
+    
+    model_eval target:
+        End to end inference:
+            FULL=1              - 跑12個block並比較每個block的輸出結果
+                                - Default只跑block 11, 並比較每層輸出結果
+        Heatmap:
+            HEATMAP=1           - Dump每個block 六個分類頭的平均 heatmap
+            HEATMAP=2           - Dump每個block 六個分類頭的平均 heatmap + 各分類頭的Heatmap
+                                - Default不產生heatmap
+        example:
+            make model_eval HEATMAP=2                   - 跑block 11, 產生分類頭的平均 heatmap & 各分類頭的Heatmap
+            make model_eval FULL=1 HEATMAP=1            - 跑完整12個block, 產生分類頭的平均 heatmap
     
     clean target:
         沒有Flag, 刪除所有simulation, wave..產生的衍生檔案
@@ -415,3 +425,44 @@ Checked elements = 75648
 
 ----------------------------------------------------------------------------------------------
 # DLA_model/
+```
+├── DLA_model.py                    # DLA的演算法模型, 與DLA RTL各層的推論結果完全一致
+├── Image                           # Inference時使用的圖片(.jpg)
+│   ├── n01440764_10040.jpg
+│   ├── n01440764_10194.jpg
+│   └── n01582220_10061.jpg
+├── Makefile
+├── compare_12blocks.py             # end to end inference and eval
+└── compare_block11.py              # Block11 inference and eval
+```
+## File expalnation
+1. DLA_model.py
+    - **不是RTL**, 是用python實作的`DLA演算法模型`, 對應的是我們預期DLA硬體要執行的演算法。
+    - 這邊主要用途是比對`DLA演算法`與`Pytorch model (.pt)`執行推論的結果差異,藉此評估硬體推論的準確度。
+    - 在FPGA驗證時, 相同的演算法模型也用來產生DLA的golden, i.e. DLA硬體實際推論的結果會與這邊的DLA演算法模型完全一致
+2. compare_12blocks.py
+    - 跑end to end的inference, 並比較.pt模型與DLA每個block的output activation
+    - 比較結果會輸出到`./DLA_model/results`
+3. compare_block11.py
+    - 跑Block11的inference, 並比較.pt模型與DLA每個layer的output activation
+    - 比較結果會輸出到`./DLA_model/results`
+## Dependency
+1. 會用到pt權重, 請將`rms_qat_best.pt`放在`AOC_final_project/PT_DIR`
+   ```
+    AOC_final_project/
+    ├── DLA
+    ├── FPGA
+    ├── PT_DIR
+    │   ├── README.md
+    │   └── rms_qat_best.pt
+    ├── README.md
+    ├── model_verification
+    └── profiling
+   ```
+2. 需要的Python套件
+    ```
+    numpy
+    Pillow
+    torch
+    tim
+    ```

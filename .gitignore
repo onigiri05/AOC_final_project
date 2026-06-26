@@ -32,3 +32,6 @@ Thumbs.db
 # log 輸出
 build/
 *.log
+
+# python 輸出
+DLA/DLA_model/results

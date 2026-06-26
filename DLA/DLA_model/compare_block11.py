@@ -8,7 +8,6 @@ PyTorch block input, so errors from blocks 0..10 are intentionally excluded.
 from __future__ import annotations
 
 import importlib.util
-import sys
 import argparse
 import json
 import math

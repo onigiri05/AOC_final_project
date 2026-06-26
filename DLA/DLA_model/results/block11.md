@@ -13,7 +13,7 @@
 
 ## Attention heatmaps
 
-- Directory: `/home/yingunix/AOC_final_project/DLA/DLA_model/results/heatmaps/block11`
+- Directory: `results/heatmaps/block11`
 - Maps are CLS-token attention over the 14x14 patch grid, averaged over 6 heads.
 - Files per image: `pt_cls_attention.png`, `dlau_cls_attention.png`, `abs_diff_attention.png`, `pt_overlay.png`, `dlau_overlay.png`.
 

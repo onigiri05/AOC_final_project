@@ -225,7 +225,7 @@
         }
       ],
       "attention_heatmap": {
-        "directory": "/home/yingunix/AOC_final_project/DLA/DLA_model/results/heatmaps/block11/n01440764_10040/block11",
+        "directory": "results/heatmaps/block11/n01440764_10040/block11",
         "pt": {
           "head_count": 6,
           "grid": [
@@ -529,7 +529,7 @@
         }
       ],
       "attention_heatmap": {
-        "directory": "/home/yingunix/AOC_final_project/DLA/DLA_model/results/heatmaps/block11/n01440764_10194/block11",
+        "directory": "results/heatmaps/block11/n01440764_10194/block11",
         "pt": {
           "head_count": 6,
           "grid": [
@@ -833,7 +833,7 @@
         }
       ],
       "attention_heatmap": {
-        "directory": "/home/yingunix/AOC_final_project/DLA/DLA_model/results/heatmaps/block11/n01582220_10061/block11",
+        "directory": "results/heatmaps/block11/n01582220_10061/block11",
         "pt": {
           "head_count": 6,
           "grid": [

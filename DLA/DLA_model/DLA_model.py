@@ -13,11 +13,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import re
 from pathlib import Path
 from typing import Any
-
 import numpy as np
 from PIL import Image
 import torch

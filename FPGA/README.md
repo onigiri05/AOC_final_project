@@ -203,6 +203,9 @@ xilinx
 
 ![Run notebook](images/image5.jpg)
 
+```text
+full design的 `vit.ipynb` 跑到Run One Block With Per-stage Checkpoints時，會輸出目前的stage，可以得知目前transformer跑到哪一個部分，因fc1+gelu會跑很久，所以看到: [stage 06] RMSNORM2輸出時可以按停止鍵，直接跑後面的block看performance結果!
+```
 ---
 
 # 2. Systolic Array Unit Test
@@ -880,10 +883,8 @@ Score 和 attention probability 共用 intermediate buffer，Softmax 後會把 s
 9. Python 持續服務 RTL 發出的 tile request / page request
 10. RTL 透過 AXI master load/store DDR data
 11. 等待 one-block 完成
-12. store X_out 到 DDR
-13. Python read back X_out
-14. 和 software golden 比對
-15. 讀取 performance counters
+12. 讀取 performance counters
+13. 輸出 performance 結果
 ```
 
 Notebook 也會印出 progress，例如目前 phase、tile request、DDR 狀態、counter 數值等，方便觀察硬體是否卡在某個 stage。

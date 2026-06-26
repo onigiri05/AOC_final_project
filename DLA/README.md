@@ -21,7 +21,7 @@ DLA README
 >   > Attention head中執行Softmax的單元
 >   > 包含RTL code和對應的測資
 > - Streaming_RMSNorm_Unit
->   > abcd
+>   > Transformer block中執行RMSNorm的單元，包含RTL code和對應的測資。
 > - Systolic/
 >   > 16 x 16 Systolic array
 >   > 包含RTL code和對應的測資
